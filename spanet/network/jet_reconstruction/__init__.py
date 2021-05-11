@@ -1,0 +1,6 @@
+from spanet.network.jet_reconstruction.jet_reconstruction_training import JetReconstructionTraining
+from spanet.network.jet_reconstruction.jet_reconstruction_validation import JetReconstructionValidation
+
+
+class JetReconstructionModel(JetReconstructionTraining, JetReconstructionValidation):
+    pass

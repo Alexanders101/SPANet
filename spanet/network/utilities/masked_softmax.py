@@ -1,0 +1,1 @@
+from .masked_softmax_new import masked_log_softmax, masked_softmax
