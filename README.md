@@ -24,11 +24,11 @@ A docker container with python and all of these libraries already installed
 is available here: https://hub.docker.com/r/ashmakovuci/igb-python
 
 ## Usage
-Using this library requires setting up several componentts.
+Using this library requires setting up several components.
 
-1. Defining the event topology.
-2. Creating a training dataset.
-3. Configuring training options.
+1. [Defining the event topology](docs/EventInfo.md).
+2. [Creating a training dataset](docs/Dataset.md).
+3. [Configuring training options](docs/Options.md).
 
 
 ### Training
