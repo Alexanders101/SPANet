@@ -3,17 +3,18 @@ from typing import List, Any, Optional, Dict
 from sys import stderr, stdout
 from collections import defaultdict
 from argparse import ArgumentParser
-from glob import glob
-from tqdm import tqdm
 
 import numpy as np
-import torch
 
-from spanet import JetReconstructionModel, Options
+from spanet import JetReconstructionModel
 from spanet.dataset.evaluator import SymmetricEvaluator, EventInfo
+from spanet.evaluation import predict_on_test_dataset, load_model
 
 
 def formatter(value: Any) -> str:
+    """ A monolithic formatter function to convert possible values to output strings.
+
+    """
     if isinstance(value, str):
         return value
 
@@ -102,73 +103,8 @@ def create_table(table: dict, full_row: bool = False) -> None:
     stdout.flush()
 
 
-def load_model(log_directory: str,
-               testing_file: Optional[str] = None,
-               event_info_file: Optional[str] = None,
-               batch_size: Optional[int] = None,
-               cuda: bool = False):
-    # Load the best-performing checkpoint on validation data
-    checkpoint = sorted(glob(f"{log_directory}/checkpoints/epoch*"))[-1]
-    checkpoint = torch.load(checkpoint, map_location='cpu')
-    checkpoint = checkpoint["state_dict"]
-
-    # Load the options that were used for this run and set the testing-dataset value
-    options = Options.load(f"{log_directory}/options.json")
-
-    # Override options from command line arguments
-    if testing_file is not None:
-        options.testing_file = testing_file
-
-    if event_info_file is not None:
-        options.event_info_file = event_info_file
-
-    if batch_size is not None:
-        options.batch_size = batch_size
-
-    # We need a testing file defined somewhere to continue
-    if options.testing_file is None:
-        raise ValueError("No testing file found in model options or provided to test.py.")
-
-    # Create model and disable all training operations for speed
-    model = JetReconstructionModel(options)
-    model.load_state_dict(checkpoint)
-    model = model.eval()
-    for parameter in model.parameters():
-        parameter.requires_grad_(False)
-
-    if cuda:
-        model = model.cuda()
-
-    return model
-
-
-def predict_on_test_dataset(model: JetReconstructionModel, cuda: bool = False):
-    full_masks = []
-    full_targets = []
-    full_predictions = []
-
-    for source_data, *targets in tqdm(model.test_dataloader(), desc="Evaluating Model"):
-        if cuda:
-            source_data = [x.cuda() for x in source_data]
-
-        predictions = model.predict_jets(*source_data)
-
-        full_targets.append([x[0].numpy() for x in targets])
-        full_masks.append([x[1].numpy() for x in targets])
-        full_predictions.append([x for x in predictions])
-
-    full_masks = np.concatenate(full_masks, axis=-1)
-    full_targets = list(map(np.concatenate, zip(*full_targets)))
-    full_predictions = list(map(np.concatenate, zip(*full_predictions)))
-
-    num_jets = model.testing_dataset.source_mask.sum(1).numpy()
-    num_jets = num_jets[:full_masks.shape[1]]
-
-    return full_predictions, full_targets, full_masks, num_jets
-
-
 def evaluate_model(model: JetReconstructionModel, cuda: bool = False):
-    predictions, targets, masks, num_jets = predict_on_test_dataset(model, cuda)
+    predictions, _, targets, masks, num_jets = predict_on_test_dataset(model, cuda)
 
     event_info = EventInfo.read_from_ini(model.options.event_info_file)
     evaluator = SymmetricEvaluator(event_info)
@@ -223,10 +159,10 @@ def main(log_directory: str,
          test_file: Optional[str],
          event_file: Optional[str],
          batch_size: Optional[int],
-         cuda: bool,
+         gpu: bool,
          table_length: int):
-    model = load_model(log_directory, test_file, event_file, batch_size, cuda)
-    results, jet_limits = evaluate_model(model, cuda)
+    model = load_model(log_directory, test_file, event_file, batch_size, gpu)
+    results, jet_limits = evaluate_model(model, gpu)
     display_table(results, jet_limits, table_length)
 
 
@@ -248,7 +184,7 @@ if __name__ == '__main__':
     parser.add_argument("-t", "--table_length", type=int, default=100,
                         help="Size of the output table.")
 
-    parser.add_argument("-c", "--cuda", action="store_true",
+    parser.add_argument("-g", "--gpu", action="store_true",
                         help="Evaluate network on the gpu.")
 
     arguments = parser.parse_args()

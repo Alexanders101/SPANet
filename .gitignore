@@ -243,3 +243,4 @@ ipython_config.py
 
 # pytorch-lightning output
 *_logs/
+*_output/

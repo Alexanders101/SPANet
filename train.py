@@ -156,7 +156,7 @@ if __name__ == '__main__':
     parser.add_argument("-l", "--log_dir", type=str, default=None,
                         help="Output directory for the checkpoints and tensorboard logs. Default to current directory.")
 
-    parser.add_argument("-n", "--name", type=str, default="lightning_logs",
+    parser.add_argument("-n", "--name", type=str, default="spanet_output",
                         help="The sub-directory to create for this run.")
 
     parser.add_argument("-fp16", action="store_true",
