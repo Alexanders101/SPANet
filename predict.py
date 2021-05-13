@@ -12,6 +12,7 @@ def create_hdf5_output(output_file: str,
                        dataset: JetReconstructionDataset,
                        full_predictions: Array,
                        full_classifications: Array):
+    print(f"Creating output file at: {output_file}")
     with h5py.File(output_file, 'w') as output:
         output.create_dataset(f"source/mask", data=dataset.source_mask)
         for i, (feature_name, _, _) in enumerate(dataset.event_info.source_features):

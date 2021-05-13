@@ -27,8 +27,10 @@ is available here: https://hub.docker.com/r/ashmakovuci/igb-python
 ## Example
 We have provided a simple `ttbar` example in order to demonstrate how to
 define events, construct datasets, and train & evaluate a network.
-[Refer to the following documentation page for a detailed walk-through 
-of the `ttbar` example](docs/TTBar.md).
+
+
+[Refer to this page for a detailed walk-through 
+for the `ttbar` example](docs/TTBar.md).
 
 ## Usage
 Using this library requires setting up several components. 
