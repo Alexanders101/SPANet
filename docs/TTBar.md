@@ -6,7 +6,7 @@ dataset for a sanity check, but you may acquire a larger training and testing da
 set here: [TODO Upload Data]. Place the training and testing file into `data/ttbar` for
 the examples to work correctly.
 
-If you are using the the docker container, then you can first alias `python` 
+If you are using the docker container, then you can first alias `python` 
 (or whatever command you want to call it) to the following docker command.
 
 ```
@@ -20,12 +20,13 @@ alias python="docker run --rm -it -v $(pwd):/workspace --workdir=/workspace ashm
 ```
 
 ### Training
-You can train a new SPANet on the ttbar dataset by running the following command.
+You can train a new SPANet on the ttbar dataset by running `train.py`.
 Specifying `NUM_GPUS` will determine how many parallel GPUs the training process 
-will use during training. If you are using docker make sure you run with 
-`--gpus all`. You can set `NUM_GPUS` to be 0 to disable GPU training and only
-use the CPU. Make sure to run it until at least one epoch has
-finished so that it creates a checkpoint file.
+will use during training. You can set `NUM_GPUS` to be 0 to disable GPU training 
+and only use the CPU. Make sure to continue the training until at least one 
+epoch has finished so that it creates a checkpoint file.
+Note that when using the full dataset,
+a complete training run takes roughly 4 hours on a single GPU.
 
 ```
 # Example Dataset
@@ -38,28 +39,33 @@ python train.py -of options_files/ttbar_full.json --gpus NUM_GPUS
 ```
 
 If you get a `RuntimeError: CUDA out of memory` then you need to decrease the
-batch size so that the data can fit onto your gpu. Do this by adding
-`--batch_size BATCH_SIZE` to the command above. Reasonable values could be
-512, 256, or 64.
+batch size so that the data can fit onto your GPU. You can achieve this by adding
+`--batch_size BATCH_SIZE` to the `train.py` command above. Reasonable values include
+512, 256, or 64. (The larger the better as long as it fits in memory.)
 
-The training results and logs will be created in `./spanet_output` by default
-and every time you train a new model, a new version will be made. If you
-want to load from a checkpoint or output to a different location,
-simply run `python train.py --help` for a full list of options.
+Training results, logs, and weights will be stored in `./spanet_output` by default
+.Every time you start a new training, a new version will be created in the output directory. 
+If you want to load from a checkpoint, 
+output to a different location, 
+or change something else about training,
+simply run `python train.py --help` for a full list of options and how to set them.
 
-During training, we output `tensorboard` logs so you can track the progress
-of the network. To view these logs have tensorboard installed (also in the docker container)
+During training, we output `tensorboard` logs to track performance. 
+To view these logs, have `tensorboard` installed (included in the docker container)
 and run
 
 `tensorbard --logdir spanet_output`
 
-and go to `localhost:6006` in the browser.
+Afterwards, navigate to `localhost:6006` in a browser.
 
 ### Evaluation
 
 Now we want to view the efficiency of the network on a testing dataset.
-Here were testing on the training dataset becaue its the only dataset we have.
-The following command will compute the metrics. The `--gpu` is optional. 
+In the example config we are testing on the training dataset 
+because it's the only dataset we have in the repo.
+The full config will test on the proper testing dataset.
+The following command will compute relevant performance metrics. 
+The `--gpu` is optional. 
 If you trained more than once, then adjust the version number accordingly.
 
 ```
@@ -90,7 +96,7 @@ structure as the testing dataset except with the jet labels replaced
 with the SPANet predictions. This can now be read in as a regular HDF5 
 in order to perform other experiments.
 
-## Event `.ini` file
+## Event `.ini` File
 We will now go over how the `ttbar` example configuration works.
 
 Included is the event description for a full hadronic-decay `ttbar` event.

@@ -15,10 +15,11 @@ These are only the minimum versions that we tested, other versions might work.
 | [numpy](https://pypi.org/project/numpy/)                | 1.19            |
 | [sympy](https://www.sympy.org/en/index.html)            | 1.17            |
 | [scikit_learn](https://scikit-learn.org/stable/)        | 1.20            |
-| [pytorch](https://pytorch.org/)                         | 1.7             |
+| [pytorch](https://pytorch.org/)                         | 1.8             |
 | [pytorch-lightning](https://www.pytorchlightning.ai/)   | 1.3             |
 | [opt_einsum](https://github.com/dgasmith/opt_einsum)    | 3.3.0           |
 | [h5py](https://pypi.org/project/h5py/)                  | 3.0             |
+| [numba](https://numba.pydata.org/)                      | 0.51            |
 
 A docker container with python and all of these libraries already installed
 is available here: https://hub.docker.com/r/ashmakovuci/igb-python

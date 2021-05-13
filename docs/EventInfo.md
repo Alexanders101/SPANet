@@ -1,4 +1,4 @@
-# Event Information File
+# Event Specification Format
 
 The first step to training SPANets is to define the 
 topology of your target event. To do this, `SPANet` 
@@ -117,3 +117,7 @@ For example, using the same four particles as above
 defines a group with the first three particles are completely invariant
 with respect to each other but the final particle `PARTICLE_4` is 
 invariant with nothing.
+
+## Example
+Refer to the Event File section of the [`ttbar` Example Guide](TTBar.md) for a
+description of the `ttbar.ini` example event file.

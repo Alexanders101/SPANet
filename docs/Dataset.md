@@ -6,9 +6,8 @@ for SPANet. The structure of these files is closely related with your
 
 ## HDF5 Structure
 
-We use a two-level dataset structure within each HDF5 file which looks like
-the following tree. Next to each key is the expected shape and data type for
-each array in the file. 
+We use a two-level HDF5 structure within each file which conforms to the following tree structure. 
+Next to each key is the expected shape and data type for each array in the file. 
 
 ```
 - source
@@ -80,3 +79,7 @@ ordering. So if `JET_1` of `PARTICLE_1` is the second jet event 0, then
 `file["PARTICLE_1/JET_1"][0] = 1` because the index of the second jet is 1.
 
 The value of jets not present in the event should `-1`.
+
+## Example
+Refer to the Example Dataset section of the [`ttbar` Example Guide](TTBar.md) for a
+description of the `ttbar` example HDF5 layout.

@@ -9,17 +9,27 @@ experiment with different options by simply modifying this file or providing
 it as part of a different script.
 
 ## Options Files
-The other method of provoding the options for a run is using a `.json` file
+[`spanet/options.py`](../spanet/options.py) defines the default parameters which
+are fed to all networks. However, you often want to experiment with many different
+options without having to always modify the codebase.
+
+The other method of providing the options is by using a `.json` file
 and a command line argument to `train.py`. An example of such a file is provided
 in [`options_files/ttbar_example.json`](../options_files/ttbar_example.json). 
 
-You can give `train.py` an options file to use using the command line argument
+The `.json` options file will override all of the defaults specified in 
+`spanet/options.py` for the given training run.
+You can provide `train.py` an options file via the command line argument
 
 `python train.py -of OPTIONS_FILE`
 
+You can also programmatically load in a `.json` file with `Options.load(filepath)`
+from [`spanet/options.py`](../spanet/options.py) if you are running your own
+training script.
+
 Whenever a network is training, it will always create a copy of its
 current options in the checkpoint directory. 
-Default is `spanet_output/version_*`.
+The default output directories are of the form `spanet_output/version_*`.
 
 ## Command Line Arguments
 `train.py` also allows you to temporarily override certain options using
