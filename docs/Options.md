@@ -19,7 +19,7 @@ You can give `train.py` an options file to use using the command line argument
 
 Whenever a network is training, it will always create a copy of its
 current options in the checkpoint directory. 
-Default is `lightning_logs/version_*`.
+Default is `spanet_output/version_*`.
 
 ## Command Line Arguments
 `train.py` also allows you to temporarily override certain options using

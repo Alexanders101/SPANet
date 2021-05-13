@@ -6,8 +6,8 @@ this library now supports arbitrary event topologies and symmetry groups.
 
 ## Dependencies
 
-A list of the libraries necessary to fully train and evaluate SPANets. These are only the minimum versions that we
-tested, other versions might work.
+A list of the libraries necessary to fully train and evaluate SPANets. 
+These are only the minimum versions that we tested, other versions might work.
 
 | Library                                                 | Minimum Version |
 | ------------------------------------------------------- | --------------- |
@@ -23,8 +23,16 @@ tested, other versions might work.
 A docker container with python and all of these libraries already installed
 is available here: https://hub.docker.com/r/ashmakovuci/igb-python
 
+## Example
+We have provided a simple `ttbar` example in order to demonstrate how to
+define events, construct datasets, and train & evaluate a network.
+[Refer to the following documentation page for a detailed walk-through 
+of the `ttbar` example](docs/TTBar.md).
+
 ## Usage
-Using this library requires setting up several components.
+Using this library requires setting up several components. 
+Refer to the following documentation pages in order to learn about the
+the different setup components, or just follow the ttbar example.
 
 1. [Defining the event topology](docs/EventInfo.md).
 2. [Creating a training dataset](docs/Dataset.md).
@@ -50,7 +58,7 @@ trained network and a file on which to evalute on.
 
 For example, after running the previous training run on `ttbar_example`, 
 you can evaluate the network again on the example dataset by running.
-`python test.py ./lightning_logs/version_0 -tf ./data/ttbar/ttbar_example.h5`
+`python test.py ./spanet_output/version_0 -tf ./data/ttbar/ttbar_example.h5`
 
 Note that the included example file is very small and you will likely not
 see very good performance on it.
