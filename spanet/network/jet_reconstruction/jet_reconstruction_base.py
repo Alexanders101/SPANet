@@ -15,7 +15,7 @@ class JetReconstructionBase(pl.LightningModule):
     def __init__(self, options: Options):
         super(JetReconstructionBase, self).__init__()
 
-        self.hparams = options
+        self.save_hyperparameters(options)
         self.options = options
 
         self.training_dataset, self.validation_dataset, self.testing_dataset = self.create_datasets()
