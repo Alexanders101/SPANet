@@ -78,11 +78,11 @@ class JetReconstructionDataset(Dataset):
             self.targets = self.load_targets(file, limit_index)
 
             self.num_events = limit_index.shape[0]
-            print(f"Index Range: {limit_index}")
+            # print(f"Index Range: {limit_index}")
 
             if not partial_events:
                 self.limit_dataset_to_full_events()
-                print(f"Full Events only.")
+                print(f"Training on Full Events only.")
 
             if jet_limit > 0:
                 self.limit_dataset_to_jet_count(jet_limit)

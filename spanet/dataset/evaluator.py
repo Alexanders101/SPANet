@@ -132,12 +132,16 @@ class SymmetricEvaluator:
 
         for event_counts in product(*particle_ranges):
             # Filter all events to make sure they at least have a particle there
-            event_mask = total_particle_counts > 0
+            event_mask = total_particle_counts >= 0
 
             # Filter to have the correct cluster counts
             for particle_count, event_count in zip(particle_counts, event_counts):
                 if event_count >= 0:
                     event_mask = event_mask & (particle_count == event_count)
+
+                # During wildcard events, make sure we have at least one particle in the event.
+                if event_count < 0:
+                    event_mask = event_mask & (total_particle_counts > 0)
 
             # Filter event information according to computed mask
             masked_predictions = [p[event_mask] for p in predictions]

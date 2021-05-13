@@ -29,7 +29,7 @@ def formatter(value: Any) -> str:
 
 # Table function taken from here:
 # https://stackoverflow.com/questions/5909873/how-can-i-pretty-print-ascii-tables-with-python
-def create_table(table: dict, full_row: bool = False) -> None:
+def create_table(table: dict, full_row: bool = False, event_type: str = None) -> None:
     table = {
         k: list(map(formatter, v)) for k, v in table.items()
     }
@@ -48,6 +48,7 @@ def create_table(table: dict, full_row: bool = False) -> None:
     horizontal_split = '| '
 
     rc_separator = ''
+    header_full_line = ''
     key_list = list(table.keys())
     rc_len_values = []
     for key in key_list:
@@ -55,13 +56,13 @@ def create_table(table: dict, full_row: bool = False) -> None:
         rc_len_values += ([rc_len, [key]] for n in range(len(table[key])))
 
         heading_line = (key + (" " * (rc_len + (additional_spacing + 1)))) + heading_separator
-        stdout.write(heading_line)
-
         rc_separator += ("-" * (len(key) + (rc_len + (additional_spacing + 1)))) + '+-'
+        header_full_line += heading_line
 
-        if key is key_list[-1]:
-            stdout.flush()
-            stdout.write('\n' + rc_separator + '\n')
+    stdout.flush()
+    if event_type is not None:
+        stdout.write('\n' + rc_separator + '\n' + "Event Type: " + event_type + '\n')
+    stdout.write(rc_separator + '\n' + header_full_line + '\n' + rc_separator + '\n')
 
     value_list = [v for vl in table.values() for v in vl]
 
@@ -128,17 +129,14 @@ def evaluate_model(model: JetReconstructionModel, cuda: bool = False):
             limited_masks = [m[jet_limit] for m in limited_masks]
 
         results[jet_limit_name] = evaluator.full_report_string(limited_predictions, limited_targets, limited_masks)
+        results[jet_limit_name]["event_jet_proportion"] = 1.0 if jet_limit_name is None else jet_limit.mean()
 
     return results, jet_limits
 
 
-def display_table(results: Dict[str, Any], jet_limits: List[str], table_length: int):
-    event_types = set(map(lambda x: x.split("/")[0], next(iter(results.values()))))
+def display_table(results: Dict[str, Any], jet_limits: List[str]):
+    event_types = set(map(lambda x: x.split("/")[0], filter(lambda x: "/" in x, next(iter(results.values())))))
     for event_type in sorted(event_types):
-        print("=" * table_length)
-        print("{}".format(event_type))
-        print("=" * table_length)
-
         columns = defaultdict(list)
         for jet_limit in jet_limits:
             particle_keys = [key.split("/")[1] for key in results[jet_limit] if
@@ -146,12 +144,13 @@ def display_table(results: Dict[str, Any], jet_limits: List[str], table_length: 
 
             columns["Jet Limit"].append(jet_limit)
             columns["Event Proportion"].append(results[jet_limit][f"{event_type}/event_proportion"])
+            columns["Jet Proportion"].append(results[jet_limit][f"event_jet_proportion"])
             columns["Event Purity"].append(results[jet_limit][f"{event_type}/event_purity"])
             for particle_key in sorted(particle_keys):
                 name = ' '.join(map(str.capitalize, particle_key.split("_")))
                 columns[name].append(results[jet_limit][f"{event_type}/{particle_key}"])
 
-        create_table(columns)
+        create_table(columns, event_type=event_type)
         print()
 
 
@@ -159,11 +158,10 @@ def main(log_directory: str,
          test_file: Optional[str],
          event_file: Optional[str],
          batch_size: Optional[int],
-         gpu: bool,
-         table_length: int):
+         gpu: bool):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
     results, jet_limits = evaluate_model(model, gpu)
-    display_table(results, jet_limits, table_length)
+    display_table(results, jet_limits)
 
 
 if __name__ == '__main__':
@@ -180,9 +178,6 @@ if __name__ == '__main__':
 
     parser.add_argument("-bs", "--batch_size", type=int, default=None,
                         help="Replace the batch size in the options with a custom size.")
-
-    parser.add_argument("-t", "--table_length", type=int, default=100,
-                        help="Size of the output table.")
 
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="Evaluate network on the gpu.")
