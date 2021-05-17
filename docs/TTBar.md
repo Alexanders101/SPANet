@@ -3,7 +3,7 @@
 Included in the repository are all files necessary to quickly test
 SPANets on `ttbar` events. This repository only contains a tiny example
 dataset for a sanity check, but you may acquire a larger training and testing data
-set here: [TODO Upload Data]. Place the training and testing file into `data/ttbar` for
+set here: http://mlphysics.ics.uci.edu/data/2021_ttbar/. Place the training and testing file into `data/ttbar` for
 the examples to work correctly.
 
 If you are using the docker container, then you can first alias `python` 
