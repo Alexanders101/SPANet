@@ -11,18 +11,18 @@ These are only the minimum versions that we tested, other versions might work.
 
 | Library                                                 | Minimum Version |
 | ------------------------------------------------------- | --------------- |
-| python                                                  | 3.7             |
-| [numpy](https://pypi.org/project/numpy/)                | 1.19            |
-| [sympy](https://www.sympy.org/en/index.html)            | 1.17            |
-| [scikit_learn](https://scikit-learn.org/stable/)        | 1.20            |
-| [pytorch](https://pytorch.org/)                         | 1.8             |
-| [pytorch-lightning](https://www.pytorchlightning.ai/)   | 1.3             |
+| python                                                  | 3.8             |
+| [numpy](https://pypi.org/project/numpy/)                | 1.19.5          |
+| [sympy](https://www.sympy.org/en/index.html)            | 1.8             |
+| [scikit_learn](https://scikit-learn.org/stable/)        | 0.24.2          |
+| [pytorch](https://pytorch.org/)                         | 1.8.1           |
+| [pytorch-lightning](https://www.pytorchlightning.ai/)   | 1.2.10          |
 | [opt_einsum](https://github.com/dgasmith/opt_einsum)    | 3.3.0           |
-| [h5py](https://pypi.org/project/h5py/)                  | 3.0             |
-| [numba](https://numba.pydata.org/)                      | 0.51            |
+| [h5py](https://pypi.org/project/h5py/)                  | 2.10            |
+| [numba](https://numba.pydata.org/)                      | 0.53.1          |
 
 A docker container with python and all of these libraries already installed
-is available here: https://hub.docker.com/r/ashmakovuci/igb-python
+is available here: https://hub.docker.com/r/spanet/spanet-python
 
 ## Example
 We have provided a simple `ttbar` example in order to demonstrate how to
