@@ -32,6 +32,8 @@ define events, construct datasets, and train & evaluate a network.
 [Refer to this page for a detailed walk-through 
 for the `ttbar` example](docs/TTBar.md).
 
+The full `ttbar` dataset may be downloaded here: http://mlphysics.ics.uci.edu/data/2021_ttbar/.
+
 ## Usage
 Using this library requires setting up several components. 
 Refer to the following documentation pages in order to learn about the
