@@ -12,11 +12,11 @@ If you are using the docker container, then you can first alias `python`
 ```
 # GPU Enabled
 # -----------
-alias python="docker run --rm -it --gpus all -v $(pwd):/workspace --workdir=/workspace ashmakovuci/igb-python python"
+alias python="docker run --rm -it --gpus all -v $(pwd):/workspace --workdir=/workspace spanet/spanet-python python"
 
 # CPU Only
 # --------
-alias python="docker run --rm -it -v $(pwd):/workspace --workdir=/workspace ashmakovuci/igb-python python"
+alias python="docker run --rm -it -v $(pwd):/workspace --workdir=/workspace spanet/spanet-python python"
 ```
 
 ### Training
