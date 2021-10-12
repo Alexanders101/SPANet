@@ -16,10 +16,10 @@ class JetEncoder(nn.Module):
         super(JetEncoder, self).__init__()
 
         self.mask_sequence_vectors = options.mask_sequence_vectors
-        self.embedding = jit.script(JetEmbedding(options, input_dim))
+        self.embedding = JetEmbedding(options, input_dim)
 
         encoder_layer = self.create_encoder_layer(transformer_options)
-        self.encoder = jit.script(nn.TransformerEncoder(encoder_layer, options.num_encoder_layers))
+        self.encoder = nn.TransformerEncoder(encoder_layer, options.num_encoder_layers)
 
     @staticmethod
     def create_encoder_layer(transformer_options: Tuple[int, int, int, float, str]) -> nn.TransformerEncoderLayer:

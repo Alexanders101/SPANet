@@ -29,10 +29,10 @@ class BranchDecoder(nn.Module):
         self.combinatorial_scale = options.combinatorial_scale
 
         # Each branch has a personal encoder stack to extract particle-level data
-        self.encoder = jit.script(StackedEncoder(options,
-                                                 options.num_branch_embedding_layers,
-                                                 options.num_branch_encoder_layers,
-                                                 transformer_options))
+        self.encoder = StackedEncoder(options,
+                                      options.num_branch_embedding_layers,
+                                      options.num_branch_encoder_layers,
+                                      transformer_options)
 
         # Symmetric attention to create the output distribution
         attention_layer = SymmetricAttentionSplit if options.split_symmetric_attention else SymmetricAttentionFull
@@ -52,15 +52,13 @@ class BranchDecoder(nn.Module):
         weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.order]
         operands = ','.join(map(lambda x: 'b' + x, weights_index_names))
         expression = f"{operands}->b{weights_index_names}"
-        shapes = [(batch_size, self.DEFAULT_JET_COUNT)] * self.order
-        return contract_expression(expression, *shapes)
+        return expression
 
     def create_diagonal_mask_operation(self):
         weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.order]
         operands = ','.join(map(lambda x: 'b' + x, weights_index_names))
         expression = f"{operands}->{weights_index_names}"
-        shapes = [(self.DEFAULT_JET_COUNT, self.DEFAULT_JET_COUNT)] * self.order
-        return contract_expression(expression, *shapes)
+        return expression
 
     def create_output_mask(self, output: Tensor, sequence_mask: Tensor) -> Tensor:
         num_jets = output.shape[1]
@@ -71,8 +69,8 @@ class BranchDecoder(nn.Module):
         # =========================================================================================
         # Padding mask
         # =========================================================================================
-        padding_mask_operands = [batch_sequence_mask.squeeze()] * self.order
-        padding_mask = self.padding_mask_operation(*padding_mask_operands, backend='torch')
+        padding_mask_operands = [batch_sequence_mask.squeeze() * 1] * self.order
+        padding_mask = torch.einsum(self.padding_mask_operation, *padding_mask_operands)
 
         # =========================================================================================
         # Diagonal mask
@@ -83,12 +81,12 @@ class BranchDecoder(nn.Module):
             identity = 1 - torch.eye(num_jets)
             identity = identity.type_as(output)
 
-            diagonal_mask_operands = [identity] * self.order
-            diagonal_mask = self.diagonal_mask_operation(*diagonal_mask_operands, backend='torch')
+            diagonal_mask_operands = [identity * 1] * self.order
+            diagonal_mask = torch.einsum(self.diagonal_mask_operation, *diagonal_mask_operands)
             diagonal_mask = diagonal_mask.unsqueeze(0) < (num_jets + 1 - self.order)
             self.diagonal_masks[(num_jets, output.device)] = diagonal_mask
 
-        return padding_mask * diagonal_mask
+        return (padding_mask * diagonal_mask).bool()
 
     def forward(self, x: Tensor, padding_mask: Tensor, sequence_mask: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """ Create a distribution over jets for a given particle and a probability of its existence.

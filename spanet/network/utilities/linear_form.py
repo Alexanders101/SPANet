@@ -1,6 +1,7 @@
+from typing import List
+
 import torch
 from torch import Tensor
-from typing import List
 
 
 @torch.jit.script
@@ -58,6 +59,28 @@ def symmetric_tensor(weights: Tensor, permutation_group: List[List[int]]):
         symmetric_weights = symmetric_weights + weights.permute(sigma)
 
     return symmetric_weights / torch.scalar_tensor(len(permutation_group) + 1)
+
+
+# A dynamically created symmetric tensor function.
+# This is necessary for onnx export since it currently does not
+# support tensor.permute with non-constant arguments.
+def create_symmetric_function(permutation_group: List[List[int]]):
+    code = [
+        "def symmetrize_tensor(weights):",
+        "    symmetric_weights = weights"
+        "    "
+    ]
+
+    for sigma in permutation_group:
+        code.append(f"    symmetric_weights = symmetric_weights + weights.permute({','.join(map(str, sigma))})")
+
+    code.append(f"    return symmetric_weights / {len(permutation_group) + 1}")
+    code = "\n".join(code)
+
+    environment = globals().copy()
+    exec(code, environment)
+
+    return environment["symmetrize_tensor"]
 
 
 @torch.jit.script

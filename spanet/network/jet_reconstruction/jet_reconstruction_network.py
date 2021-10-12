@@ -49,10 +49,8 @@ class JetReconstructionNetwork(JetReconstructionBase):
 
     def forward(self, source_data: Tensor, source_mask: Tensor) -> Tuple[Tuple[Tensor, Tensor], ...]:
         # Normalize incoming data
-        # This operation is gradient-free, so we can use inplace operations.
-        source_data = source_data.clone()
-        source_data[source_mask] -= self.mean
-        source_data[source_mask] /= self.std
+        source_data = (source_data - self.mean) / self.std
+        source_data = source_mask.unsqueeze(2) * source_data
 
         # Extract features from data using transformer
         hidden, padding_mask, sequence_mask = self.encoder(source_data, source_mask)

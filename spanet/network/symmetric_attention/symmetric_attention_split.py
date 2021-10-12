@@ -1,14 +1,14 @@
 from itertools import islice
 from typing import List, Tuple
-from opt_einsum import contract_expression
 
 import numpy as np
+import torch
 from torch import Tensor, nn, jit
 
 from spanet.options import Options
 from spanet.network.layers.stacked_encoder import StackedEncoder
 from spanet.network.symmetric_attention.symmetric_attention_base import SymmetricAttentionBase
-from spanet.network.utilities.linear_form import symmetric_tensor
+from spanet.network.utilities.linear_form import create_symmetric_function
 
 
 # noinspection SpellCheckingInspection
@@ -28,10 +28,10 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
 
         # Each potential jet gets its own encoder in order to extract information for attention.
         self.encoders = nn.ModuleList([
-            jit.script(StackedEncoder(options,
-                                      options.num_jet_embedding_layers,
-                                      options.num_jet_encoder_layers,
-                                      transformer_options))
+            StackedEncoder(options,
+                           options.num_jet_embedding_layers,
+                           options.num_jet_encoder_layers,
+                           transformer_options)
 
             for _ in range(order)
         ])
@@ -47,6 +47,8 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
             nn.PReLU(self.attention_dim)
             for _ in range(order)
         ])
+
+        self.symmetrize_tensor = create_symmetric_function(self.batch_no_identity_permutations)
 
         # Operation to perform general n-dimensional attention.
         self.contraction_operation = self.make_contraction()
@@ -67,9 +69,7 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
 
         result = f"->b{''.join(input_index_names[:self.order])}"
 
-        expression = operations + result
-        shapes = [(self.batch_size, self.DEFAULT_JET_COUNT, self.features)] * self.order
-        return contract_expression(expression, *shapes, optimize='optimal')
+        return operations + result
 
     def forward(self, x: Tensor, padding_mask: Tensor, sequence_mask: Tensor) -> Tensor:
         """ Perform symmetric attention on the hidden vectors and produce the output logits.
@@ -119,7 +119,7 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
         # Construct the output logits via general self-attention.
         # output: [T, T, ...]
         # -------------------------------------------------------
-        output = self.contraction_operation(*ys, backend='torch')
+        output = torch.einsum(self.contraction_operation, *ys)
         output = output / self.weights_scale
 
         # ---------------------------------------------------
@@ -127,6 +127,6 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
         # output: [T, T, ...]
         # ---------------------------------------------------
         # TODO Perhaps make the encoder layers match in the symmetric dimensions.
-        output = symmetric_tensor(output, self.batch_no_identity_permutations)
+        output = self.symmetrize_tensor(output)
 
         return output

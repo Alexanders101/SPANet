@@ -13,10 +13,10 @@ class BranchClassifier(nn.Module):
         self.hidden_dim = options.hidden_dim
         self.num_layers = options.num_branch_classification_layers
 
-        self.hidden_layers = jit.script(LinearStack(options,
-                                                    self.num_layers,
-                                                    self.hidden_dim,
-                                                    options.skip_connections))
+        self.hidden_layers = LinearStack(options,
+                                         self.num_layers,
+                                         self.hidden_dim,
+                                         options.skip_connections)
 
         self.output_layer = nn.Linear(options.hidden_dim, 1)
 
@@ -42,7 +42,7 @@ class BranchClassifier(nn.Module):
         # sequence_mask : [1, B, 1]
         # ------------------------------------------------------------
         hidden = (q * sequence_mask).sum(0, keepdim=True) / sequence_mask.sum(0, keepdim=True)
-        sequence_mask = sequence_mask.any(dim=0, keepdim=True)
+        sequence_mask = sequence_mask.sum(dim=0, keepdim=True) > 0
 
         # ------------------------------------------------------------
         # Run through the linear layer stack and output the result
