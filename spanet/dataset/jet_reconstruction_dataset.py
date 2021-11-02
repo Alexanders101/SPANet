@@ -60,7 +60,7 @@ class JetReconstructionDataset(Dataset):
             self.event_info = EventInfo.read_from_ini(event_info)
 
         self.target_symmetries = self.event_info.mapped_targets.items()
-        self.source_normalization = self.event_info.source_features
+        self.source_normalization = self.event_info.input_features
         self.event_transpositions = self.event_info.event_transpositions
         self.event_permutation_group = self.event_info.event_permutation_group
         self.unordered_event_transpositions = set(map(tuple, map(sorted, self.event_transpositions)))
@@ -69,15 +69,23 @@ class JetReconstructionDataset(Dataset):
         self.std = None
 
         with h5py.File(self.data_file, 'r') as file:
-            self.num_events, self.num_jets = file["source/mask"].shape
-            self.num_features = self.event_info.num_features
+            self.num_events = file[f"{self.event_info.input_names[0]}/mask"].shape[0]
 
             limit_index = self.compute_limit_index(limit_index, randomization_seed)
 
-            self.source_data, self.source_mask = self.load_source_data(file, limit_index)
+            self.source_data = OrderedDict()
+            self.source_mask = OrderedDict()
+
+            for input_name in self.event_info.input_names:
+                source_data, source_mask = self.load_source_data(file, input_name, limit_index)
+                self.source_data[input_name] = source_data
+                self.source_mask[input_name] = source_mask
+
             self.targets = self.load_targets(file, limit_index)
 
             self.num_events = limit_index.shape[0]
+            self.num_jets = sum(source_mask.sum(1) for source_mask in self.source_mask.values())
+
             # print(f"Index Range: {limit_index}")
 
             if not partial_events:
@@ -129,13 +137,16 @@ class JetReconstructionDataset(Dataset):
         # Make sure the resulting index array is sorted for faster loading.
         return np.sort(limit_index)
 
-    def load_source_data(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Tuple[Tensor, Tensor]:
+    def load_source_data(self, hdf5_file: h5py.File, input_name: str, limit_index: np.ndarray) -> Tuple[Tensor, Tensor]:
         """ Load source jet data and masking information
 
         Parameters
         ----------
         hdf5_file: h5py.File
             HDF5 file containing the event.
+        input_name: str
+            Which inputs to load from the file.
+            SOURCE for old format, and the name of the input type for new format.
         limit_index: array or Tensor
             The limiting array for selecting a subset of dataset for this object.
 
@@ -147,11 +158,14 @@ class JetReconstructionDataset(Dataset):
         torch.Tensor
             Source mask
         """
-        source_mask = torch.from_numpy(hdf5_file["source/mask"][:]).contiguous()
-        source_data = torch.empty(self.num_features, self.num_events, self.num_jets, dtype=torch.float32)
+        source_mask = torch.from_numpy(hdf5_file[f"{input_name}/mask"][:]).contiguous()
 
-        for index, (feature, _, log_transform) in enumerate(self.event_info.source_features):
-            hdf5_file[f"source/{feature}"].read_direct(source_data[index].numpy())
+        num_jets = source_mask.shape[1]
+        num_features = self.event_info.num_features(input_name)
+        source_data = torch.empty(num_features, self.num_events, num_jets, dtype=torch.float32)
+
+        for index, (feature, _, log_transform) in enumerate(self.event_info.input_features[input_name]):
+            hdf5_file[f"{input_name}/{feature}"].read_direct(source_data[index].numpy())
             if log_transform:
                 source_data[index] = torch.log(torch.clamp(source_data[index], min=1e-6)) * source_mask
 
@@ -191,7 +205,9 @@ class JetReconstructionDataset(Dataset):
 
         return targets
 
-    def compute_statistics(self, mean: Optional[Tensor] = None, std: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def compute_statistics(self,
+                           mean: Optional[Mapping[str, Tensor]] = None,
+                           std: Optional[Mapping[str, Tensor]] = None) -> Tuple[Mapping[str, Tensor], Mapping[str, Tensor]]:
         """ Compute the mean and standard deviation of features with normalization enabled in the event file.
 
         Parameters
@@ -208,13 +224,21 @@ class JetReconstructionDataset(Dataset):
             The new mean and standard deviation for this dataset.
         """
         if mean is None:
-            masked_data = self.source_data[self.source_mask]
-            mean = masked_data.mean(0)
-            std = masked_data.std(0)
+            mean = OrderedDict()
+            std = OrderedDict()
 
-            std[std < 1e-5] = 1
-            mean[~self.event_info.normalized_features] = 0
-            std[~self.event_info.normalized_features] = 1
+            for input_name, source_data in self.source_data.items():
+                masked_data = source_data[self.source_mask[input_name]]
+                masked_mean = masked_data.mean(0)
+                masked_std = masked_data.std(0)
+
+                masked_std[masked_std < 1e-5] = 1
+
+                masked_mean[~self.event_info.normalized_features(input_name)] = 0
+                masked_std[~self.event_info.normalized_features(input_name)] = 1
+
+                mean[input_name] = masked_mean
+                std[input_name] = masked_std
 
         self.mean = mean
         self.std = std
@@ -264,15 +288,14 @@ class JetReconstructionDataset(Dataset):
         return torch.from_numpy(index_tensor), target_weights_tensor
 
     def compute_jet_balance(self):
-        num_jets = self.source_mask.sum(1)
-        max_jets = num_jets.max()
-        min_jets = num_jets.min()
+        max_jets = self.num_jets.max()
+        min_jets = self.num_jets.min()
 
-        class_count = torch.bincount(num_jets, minlength=max_jets + 1)
+        class_count = torch.bincount(self.num_jets, minlength=max_jets + 1)
 
         # Compute the effective class count
         # https://arxiv.org/pdf/1901.05555.pdf
-        beta = 1 - (1 / num_jets.shape[0])
+        beta = 1 - (1 / self.num_jets.shape[0])
         jet_class_weights = (1 - beta) / (1 - (beta ** class_count))
         jet_class_weights[torch.isinf(jet_class_weights)] = 0
         jet_class_weights = (max_jets - min_jets + 1) * jet_class_weights / jet_class_weights.sum()
@@ -280,8 +303,11 @@ class JetReconstructionDataset(Dataset):
         return jet_class_weights
 
     def limit_dataset_to_mask(self, event_mask):
-        self.source_data = self.source_data[event_mask].contiguous()
-        self.source_mask = self.source_mask[event_mask].contiguous()
+        for input_name, source_data in self.source_data.items():
+            source_mask = self.source_mask[input_name]
+
+            self.source_data[input_name] = source_data[event_mask].contiguous()
+            self.source_mask[input_name] = source_mask[event_mask].contiguous()
 
         for key in self.targets:
             targets, masks = self.targets[key]
@@ -304,18 +330,24 @@ class JetReconstructionDataset(Dataset):
         self.limit_dataset_to_mask(full_events)
 
     def limit_dataset_to_jet_count(self, jet_count):
-        event_mask = self.source_mask.sum(1) == jet_count
-        self.limit_dataset_to_mask(event_mask)
-
-    def limit_dataset_to_btag_count(self, btag_count):
-        event_mask = self.source_data[:, :, -1].sum(1) < (btag_count - 0.5)
-        self.limit_dataset_to_mask(event_mask)
+        self.limit_dataset_to_mask(self.num_jets == jet_count)
 
     def __len__(self) -> int:
         return self.num_events
 
-    def __getitem__(self, item) -> Tuple[Tuple[Tensor, Tensor], ...]:
-        source = (self.source_data[item], self.source_mask[item])
-        targets = ((target_data[item], target_mask[item]) for target_data, target_mask in self.targets.values())
+    def __getitem__(self, item) -> Tuple[
+        Tuple[Tuple[Tensor, Tensor], ...],
+        Tensor,
+        Tuple[Tuple[Tensor, Tensor], ...]
+    ]:
+        sources = tuple(
+            (self.source_data[input_name][item], self.source_mask[input_name][item])
+            for input_name in self.source_data
+        )
 
-        return source, *targets
+        targets = tuple(
+            (target_data[item], target_mask[item])
+            for target_data, target_mask in self.targets.values()
+        )
+
+        return sources, self.num_jets[item], targets,

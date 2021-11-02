@@ -1,8 +1,14 @@
-from typing import List, Tuple, Mapping, Iterable
+from typing import List, Tuple, Mapping, Iterable, Dict
 from configparser import ConfigParser
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from itertools import chain, permutations
 
+from yaml import load as yaml_load
+
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    from yaml import Loader, Dumper
 import numpy as np
 
 from spanet.network.utilities.group_theory import power_set, complete_symbolic_symmetry_group, complete_symmetry_group
@@ -10,12 +16,16 @@ from spanet.network.utilities.group_theory import power_set, complete_symbolic_s
 
 class EventInfo:
     def __init__(self,
-                 source_features: List[Tuple[str, bool, bool]],
+                 input_types: Mapping[str, str],
+                 input_features: Mapping[str, List[Tuple[str, bool, bool]]],
                  event_particles: Tuple[str, ...],
                  event_permutations: str,
                  targets: Mapping[str, Tuple[Tuple[str, ...], str]]):
 
-        self.source_features = source_features
+        self.input_types = input_types
+        self.input_names = list(input_types)
+        self.input_features = input_features
+
         self.event_particles = event_particles
         self.event_permutations = event_permutations
 
@@ -33,13 +43,11 @@ class EventInfo:
             self.jet_mappings[target] = jet_mapping
             self.mapped_targets[target] = (num_jets, mapped_permutations)
 
-    @property
-    def normalized_features(self):
-        return np.array([feature[1] for feature in self.source_features])
+    def normalized_features(self, input_name):
+        return np.array([feature[1] for feature in self.input_features[input_name]])
 
-    @property
-    def log_features(self):
-        return np.array([feature[2] for feature in self.source_features])
+    def log_features(self, input_name):
+        return np.array([feature[2] for feature in self.input_features[input_name]])
 
     @property
     def event_equivalence_classes(self):
@@ -83,9 +91,8 @@ class EventInfo:
 
         return OrderedDict(output)
 
-    @property
-    def num_features(self):
-        return len(self.source_features)
+    def num_features(self, input_name: str):
+        return len(self.input_features[input_name])
 
     @staticmethod
     def parse_list(list_string: str):
@@ -101,10 +108,29 @@ class EventInfo:
         config = ConfigParser()
         config.read(filename)
 
-        source_features = [(name,
-                            "normalize" in normalize.lower() or "true" in normalize.lower(),
-                            "log" in normalize.lower())
-                           for name, normalize in config["SOURCE"].items()]
+        if "INPUTS" in config:
+            features_types = OrderedDict([
+                (key.upper(), val)
+                for key, val in config["INPUTS"].items()
+            ])
+        else:
+            features_types = OrderedDict([("SOURCE", "sequential")])
+
+        print(features_types)
+        source_features = OrderedDict(
+            (
+                key,
+                [
+                    (
+                        name,
+                        "normalize" in normalize.lower() or "true" in normalize.lower(),
+                        "log" in normalize.lower()
+                    )
+                    for name, normalize in config[key].items()
+                ]
+            )
+            for key in features_types
+        )
 
         event_particles = cls.parse_list(config["EVENT"]["particles"])
         event_permutations = config["EVENT"]["permutations"]
@@ -115,4 +141,47 @@ class EventInfo:
             target_permutations = config[key]["permutations"]
             targets[key] = (target_jets, target_permutations)
 
-        return cls(source_features, event_particles, event_permutations, targets)
+        return cls(features_types, source_features, event_particles, event_permutations, targets)
+
+    @classmethod
+    def read_from_yaml(cls, filename: str):
+        with open(filename, 'r') as file:
+            config = yaml_load(file, Loader)
+
+        # Extract input feature information
+        input_types = OrderedDict()
+        input_features = OrderedDict()
+        FeatureType = namedtuple("feature", ["name", "normalize", "log_scale"])
+
+        for input_name, input_information in config["INPUTS"].items():
+            input_types[input_name] = input_information["TYPE"]
+            input_features[input_name] = [
+                FeatureType(
+                    name,
+                    "normalize" in normalize.lower() or "true" in normalize.lower(),
+                    "log" in normalize.lower()
+                )
+
+                for name, normalize in input_information["FEATURES"].items()
+            ]
+
+        # Extract event information
+        event_particles = tuple(config["EVENT"]["PARTICLES"])
+        event_permutations = list(map(tuple, config["EVENT"]["PERMUTATIONS"]))
+
+        # Extract particle information
+        particles = OrderedDict()
+        for particle in event_particles:
+            particle_jets = config[particle]["JETS"]
+            particle_permutations = list(map(tuple, config[particle]["PERMUTATIONS"]))
+
+            particle_reconstructions = OrderedDict([
+                list(jet.items())[0] if isinstance(jet, dict) else (jet, [])
+                for jet in particle_jets
+            ])
+
+            particle_jets = tuple(particle_reconstructions.keys())
+
+            particles[particle] = (particle_jets, particle_permutations, particle_reconstructions)
+
+        return cls(input_types, input_features, event_particles, event_permutations, particles)

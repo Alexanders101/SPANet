@@ -14,7 +14,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
     def __init__(self, options: Options):
         super(JetReconstructionTraining, self).__init__(options)
 
-        self.log_clip = torch.log(10 * torch.tensor(torch.finfo(torch.float32).eps)).item()
+        self.log_clip = torch.log(10 * torch.scalar_tensor(torch.finfo(torch.float32).eps)).item()
 
     def particle_classification_loss(self, classification: Tensor, target_mask: Tensor) -> Tensor:
         loss = F.binary_cross_entropy_with_logits(classification, target_mask.float(), reduction='none')
@@ -76,12 +76,12 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         return sum(results) / len(self.training_dataset.unordered_event_transpositions)
 
     def training_step(self, batch: Tuple[Tuple[Tensor, Tensor], ...], batch_nb: int) -> Dict[str, Tensor]:
-        (source_data, source_mask), *targets = batch
+        sources, num_jets, targets = batch
 
         # ===================================================================================================
         # Network Forward Pass
         # ---------------------------------------------------------------------------------------------------
-        predictions = self.forward(source_data, source_mask)
+        predictions = self.forward(sources)
 
         # Extract individual prediction data
         classifications = tuple(prediction[1] for prediction in predictions)
@@ -129,8 +129,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
 
         # Balance based on the number of jets in this event
         if self.balance_jets:
-            class_indices = source_mask.sum(1)
-            class_weights = self.jet_weights_tensor[class_indices]
+            class_weights = self.jet_weights_tensor[num_jets]
             total_loss = total_loss * class_weights
 
         # ===================================================================================================

@@ -88,10 +88,10 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
     def validation_step(self, batch, batch_idx) -> Dict[str, np.float32]:
         # Run the base prediction step
-        (source_data, source_mask), *targets = batch
-        jet_predictions, particle_scores = self.predict_jets_and_particle_scores(source_data, source_mask)
+        sources, num_jets, targets = batch
+        jet_predictions, particle_scores = self.predict_jets_and_particle_scores(sources)
 
-        batch_size = source_data.shape[0]
+        batch_size = num_jets.shape[0]
         num_targets = len(targets)
 
         # Stack all of the targets into single array, we will also move to numpy for easier the numba computations.

@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import numpy as np
 import torch
+from torch import nn
 
 # noinspection PyProtectedMember
 from torch.utils.data import DataLoader
@@ -20,14 +21,23 @@ class JetReconstructionBase(pl.LightningModule):
 
         self.training_dataset, self.validation_dataset, self.testing_dataset = self.create_datasets()
 
+        self.input_names = self.training_dataset.event_info.input_names
         self.mean = 0
         self.std = 1
 
         # Normalize datasets using training dataset statistics
         if self.options.normalize_features:
             self.mean, self.std = self.training_dataset.compute_statistics()
-            self.mean = torch.nn.Parameter(self.mean, requires_grad=False)
-            self.std = torch.nn.Parameter(self.std, requires_grad=False)
+
+            self.mean = nn.ParameterDict({
+                key: nn.Parameter(val, requires_grad=False)
+                for key, val in self.mean.items()
+            })
+
+            self.std = nn.ParameterDict({
+                key: nn.Parameter(val, requires_grad=False)
+                for key, val in self.std.items()
+            })
 
         # Compute class weights for particles from the training dataset target distribution
         self.balance_particles = False
