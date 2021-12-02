@@ -27,8 +27,8 @@ class JetReconstructionValidation(JetReconstructionNetwork):
     @property
     def particle_score_metrics(self) -> Dict[str, Callable[[np.ndarray, np.ndarray], float]]:
         return {
-            "roc_auc": sk_metrics.roc_auc_score,
-            "average_precision": sk_metrics.average_precision_score
+            # "roc_auc": sk_metrics.roc_auc_score,
+            # "average_precision": sk_metrics.average_precision_score
         }
 
     def compute_metrics(self, jet_predictions, particle_scores, stacked_targets, stacked_masks):
@@ -88,8 +88,8 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
     def validation_step(self, batch, batch_idx) -> Dict[str, np.float32]:
         # Run the base prediction step
-        sources, num_jets, targets = batch
-        jet_predictions, particle_scores = self.predict_jets_and_particle_scores(sources)
+        sources, num_jets, targets, regression_targets = batch
+        jet_predictions, particle_scores, regressions = self.predict_jets_and_particle_scores(sources)
 
         batch_size = num_jets.shape[0]
         num_targets = len(targets)
@@ -111,6 +111,10 @@ class JetReconstructionValidation(JetReconstructionNetwork):
                     target[:, indices] = np.sort(target[:, indices])
 
         metrics.update(self.compute_metrics(jet_predictions, particle_scores, stacked_targets, stacked_masks))
+
+        for key in regressions:
+            percent_error = torch.abs((regressions[key] - regression_targets[key]) / regression_targets[key])
+            self.log(f"REGRESSION/{key}_percent_error", percent_error.mean())
 
         for name, value in metrics.items():
             if not np.isnan(value):

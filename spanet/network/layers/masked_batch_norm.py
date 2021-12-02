@@ -61,27 +61,17 @@ class MaskedBatchNorm1D(nn.Module):
 
     def forward(self, features: Tensor, mask: Optional[Tensor] = None) -> Tensor:
         # Calculate the masked mean and variance
-        batch_size, timesteps, feature_dim = features.shape
-
-        if mask is not None and mask.shape != (batch_size, timesteps):
-            raise ValueError('Mask should have shape (B, ).')
-
-        if feature_dim != self.num_features:
-            raise ValueError('Expected %d channels but images has %d channels' % (self.num_features, feature_dim))
+        timesteps, batch_size, feature_dim = features.shape
+        mask = mask.view(timesteps, batch_size)
 
         if mask is not None:
-            masked_features = features * mask.view(batch_size, timesteps, 1)
-            normalization_factor = mask.sum()
+            masked_features = features[mask]
         else:
-            masked_features = features
-            normalization_factor = torch.scalar_tensor(batch_size * timesteps, dtype=torch.int64)
-
-        # Find the masked sum of the images
-        masked_sum = masked_features.sum(dim=(0, 1), keepdim=True)
+            masked_features = features.view(timesteps * batch_size, feature_dim)
 
         # Compute masked image statistics
-        current_mean = masked_sum / normalization_factor
-        current_var = ((masked_features - current_mean) ** 2).sum(dim=(0, 1), keepdim=True) / normalization_factor
+        current_mean = masked_features.mean(0).view(1, 1, feature_dim).detach()
+        current_var = masked_features.var(0).view(1, 1, feature_dim).detach()
 
         # Update running statistics
         if self.track_running_stats and self.training:
@@ -89,18 +79,19 @@ class MaskedBatchNorm1D(nn.Module):
                 self.running_mean = current_mean
                 self.running_var = current_var
             else:
-                self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * current_mean.detach()
-                self.running_var = (1 - self.momentum) * self.running_var + self.momentum * current_var.detach()
+                self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * current_mean
+                self.running_var = (1 - self.momentum) * self.running_var + self.momentum * current_var
+
             self.num_batches_tracked += 1
 
         # Apply running statistics transform
         if self.track_running_stats and not self.training:
-            normed_images = (masked_features - self.running_mean) / (torch.sqrt(self.running_var + self.eps))
+            normed_images = (features - self.running_mean) / (torch.sqrt(self.running_var + self.eps))
         else:
-            normed_images = (masked_features - current_mean) / (torch.sqrt(current_var + self.eps))
+            normed_images = (features - current_mean) / (torch.sqrt(current_var + self.eps))
 
         # Apply affine transform from learned parameters
         if self.affine:
             normed_images = normed_images * self.weight + self.bias
 
-        return normed_images
+        return normed_images * mask.unsqueeze(2)

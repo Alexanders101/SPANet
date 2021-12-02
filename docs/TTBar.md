@@ -100,7 +100,7 @@ in order to perform other experiments.
 We will now go over how the `ttbar` example configuration works.
 
 Included is the event description for a full hadronic-decay `ttbar` event.
-This file is located at [`event_files/ttbar.ini`](../event_files/ttbar.ini).
+This file is located at [`event_files/ttbar.ini`](../event_files/old/ttbar.ini).
 We will also reproduce it here for simplicity.
 
 ```

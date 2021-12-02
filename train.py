@@ -96,8 +96,8 @@ def main(event_file: str,
     model = JetReconstructionModel(options)
 
     # If we are using more than one gpu, then switch to DDP training
-    distributed_backend = 'dp' if options.num_gpu > 1 else None
-    # distributed_backend = 'ddp' if options.num_gpu > 1 else None
+    # distributed_backend = 'dp' if options.num_gpu > 1 else None
+    distributed_backend = 'ddp' if options.num_gpu > 1 else None
 
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
     log_dir = getcwd() if log_dir is None else log_dir
@@ -117,7 +117,7 @@ def main(event_file: str,
                          max_epochs=options.epochs,
                          callbacks=[checkpoint_callback, learning_rate_callback],
                          resume_from_checkpoint=checkpoint,
-                         distributed_backend=distributed_backend,
+                         strategy=distributed_backend,
                          gpus=options.num_gpu if options.num_gpu > 0 else None,
                          track_grad_norm=2 if options.verbose_output else -1,
                          gradient_clip_val=options.gradient_clip,

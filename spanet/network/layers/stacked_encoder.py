@@ -1,5 +1,6 @@
 from typing import Tuple, Optional
 
+import torch
 from torch import Tensor, nn, jit
 
 from spanet.options import Options
@@ -25,11 +26,13 @@ class TransformerIdentity(nn.Module):
 
 
 class StackedEncoder(nn.Module):
-    def __init__(self,
-                 options: Options,
-                 num_embedding_layers: int,
-                 num_encoder_layers: int,
-                 transformer_options: Tuple[int, int, int, float, str]):
+    def __init__(
+            self,
+            options: Options,
+            num_embedding_layers: int,
+            num_encoder_layers: int,
+            transformer_options: Tuple[int, int, int, float, str]
+    ):
 
         super(StackedEncoder, self).__init__()
 
@@ -43,6 +46,9 @@ class StackedEncoder(nn.Module):
         else:
             self.encoder = TransformerIdentity()
 
+        self.particle_vector = nn.Parameter(torch.randn(1, 1, options.hidden_dim))
+
+
     @staticmethod
     def encoder_layer(transformer_options: Tuple[int, int, int, float, str]) -> nn.TransformerEncoderLayer:
         """ Encoder layer that will be given to nn.TransformerEncoder.
@@ -51,14 +57,14 @@ class StackedEncoder(nn.Module):
         """
         return nn.TransformerEncoderLayer(*transformer_options)
 
-    def forward(self, x: Tensor, padding_mask: Tensor, sequence_mask: Tensor) -> Tensor:
+    def forward(self, vectors: Tensor, padding_mask: Tensor, sequence_mask: Tensor) -> Tuple[Tensor, Tensor]:
         """ Apply time-independent linear layers followed by a transformer encoder.
 
         This is used during the branches and symmetric attention layers.
 
         Parameters
         ----------
-        x: [T, B, D]
+        vectors: [T, B, D]
             Input sequence to predict on.
         padding_mask : [B, T]
             Negative mask for transformer input.
@@ -70,6 +76,37 @@ class StackedEncoder(nn.Module):
         output : [T, B, 1]
             New encoded vectors.
         """
-        x = self.embedding(x, sequence_mask)
-        x = self.encoder(x, src_key_padding_mask=padding_mask)
-        return x * sequence_mask
+        num_vectors, batch_size, hidden_dim = vectors.shape
+
+        # -----------------------------------------------------------------------------
+        # Embed vectors again into particle space
+        # vectors: [T, B, D]
+        # -----------------------------------------------------------------------------
+        vectors = self.embedding(vectors, sequence_mask)
+
+        # -----------------------------------------------------------------------------
+        # Add a "particle vector" which will store particle level data.
+        # particle_vector: [1, B, D]
+        # combined_vectors: [T + 1, B, D]
+        # -----------------------------------------------------------------------------
+        particle_vector = self.particle_vector.expand(1, batch_size, hidden_dim)
+        combined_vectors = torch.cat((particle_vector, vectors), dim=0)
+
+        # -----------------------------------------------------------------------------
+        # Also modify the padding mask to indicate that the particle vector is real.
+        # particle_padding_mask: [B, 1]
+        # combined_padding_mask: [B, T + 1]
+        # -----------------------------------------------------------------------------
+        particle_padding_mask = padding_mask.new_zeros(batch_size, 1)
+        combined_padding_mask = torch.cat((particle_padding_mask, padding_mask), dim=1)
+
+        # -----------------------------------------------------------------------------
+        # Run all of the vectors through transformer encoder
+        # combined_vectors: [T + 1, B, D]
+        # particle_vector: [B, D]
+        # vectors: [T, B, D]
+        # -----------------------------------------------------------------------------
+        combined_vectors = self.encoder(combined_vectors, src_key_padding_mask=combined_padding_mask)
+        particle_vector, vectors = combined_vectors[0], combined_vectors[1:]
+
+        return vectors * sequence_mask, particle_vector

@@ -1,0 +1,1 @@
+from spanet.network.layers.embedding.combined_vector_embedding import CombinedVectorEmbedding

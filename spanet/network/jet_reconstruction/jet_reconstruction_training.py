@@ -16,6 +16,36 @@ class JetReconstructionTraining(JetReconstructionNetwork):
 
         self.log_clip = torch.log(10 * torch.scalar_tensor(torch.finfo(torch.float32).eps)).item()
 
+        self.particle_names = list(self.training_dataset.event_info.targets.keys())
+        self.daughter_names = {
+            particle: self.training_dataset.event_info.targets[particle][0]
+            for particle in self.particle_names
+        }
+
+    def restructure_regressions(self, regressions):
+        def with_default(key):
+            return key, key in regressions, regressions[key] if key in regressions else 0.0
+
+        event_data = with_default("EVENT")
+
+        particle_data = [
+            with_default(f"{particle}/PARTICLE")
+            for particle in self.particle_names
+        ]
+
+        daughter_data = [
+            [
+                with_default(f"{particle}/{daughter}")
+                for daughter in self.daughter_names[particle]
+            ]
+            for particle in self.particle_names
+        ]
+
+        return event_data, particle_data, daughter_data
+
+    def regression_loss(self, prediction, target):
+        return self.options.regression_loss_scale * torch.mean((prediction - target) ** 2)
+
     def particle_classification_loss(self, classification: Tensor, target_mask: Tensor) -> Tensor:
         loss = F.binary_cross_entropy_with_logits(classification, target_mask.float(), reduction='none')
         return self.options.classification_loss_scale * loss
@@ -31,7 +61,10 @@ class JetReconstructionTraining(JetReconstructionNetwork):
                        for prediction, decoder in zip(predictions, self.decoders)]
 
         # Convert the targets into a numpy array of tensors so we can use fancy indexing from numpy
-        targets = np.array(targets, dtype='O')
+        numpy_targets = np.empty(len(targets), dtype=np.object)
+        numpy_targets[:] = targets
+        targets = numpy_targets
+        # targets = np.array(targets, dtype='O')
 
         # Compute the loss on every valid permutation of the targets
         # TODO think of a way to avoid this memory transfer but keep permutation indices synced with checkpoint
@@ -76,16 +109,18 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         return sum(results) / len(self.training_dataset.unordered_event_transpositions)
 
     def training_step(self, batch: Tuple[Tuple[Tensor, Tensor], ...], batch_nb: int) -> Dict[str, Tensor]:
-        sources, num_jets, targets = batch
+        sources, num_jets, targets, regression_targets = batch
 
         # ===================================================================================================
         # Network Forward Pass
         # ---------------------------------------------------------------------------------------------------
-        predictions = self.forward(sources)
+        predictions, classifications, regressions = self.forward(sources)
 
-        # Extract individual prediction data
-        classifications = tuple(prediction[1] for prediction in predictions)
-        predictions = tuple(prediction[0] for prediction in predictions)
+        # regressions = self.restructure_regressions(regressions)
+        # regression_targets = self.restructure_regressions(regression_targets)
+        #
+        # event_regression_predictions, particle_regression_predictions, daughter_regression_predictions = regressions
+        # event_regression_targets, particle_regression_targets, daughter_regression_targets = regression_targets
 
         # ===================================================================================================
         # Initial log-likelihood loss for classification task
@@ -108,14 +143,21 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # ---------------------------------------------------------------------------------------------------
         if self.options.kl_loss_scale > 0:
             # Compute the symmetric loss between all valid pairs of distributions.
-            kl_loss = self.symmetric_divergence(predictions, masks)
+            kl_loss = -self.symmetric_divergence(predictions, masks)
 
             with torch.no_grad():
-                self.log("loss/symmetric_loss", -kl_loss.mean())
+                self.log("loss/symmetric_loss", kl_loss.mean())
                 if torch.isnan(kl_loss).any():
                     raise ValueError("Symmetric KL Loss has diverged.")
 
-            total_loss = total_loss - kl_loss * self.options.kl_loss_scale
+            total_loss = total_loss + kl_loss * self.options.kl_loss_scale
+
+        if self.options.regression_loss_scale > 0:
+            for key in regression_targets:
+                regression_loss = self.regression_loss(regressions[key], regression_targets[key])
+                self.log(f"loss/regression/{key}", regression_loss)
+
+                total_loss = total_loss + regression_loss
 
         # ===================================================================================================
         # Balance the loss based on the distribution of various classes in the dataset.

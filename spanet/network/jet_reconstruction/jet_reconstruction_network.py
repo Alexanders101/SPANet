@@ -1,13 +1,14 @@
-from typing import Tuple
+from typing import Tuple, Dict
 
 import numpy as np
 import torch
 from torch import Tensor, nn
 
 from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
+from spanet.network.layers.regression_decoder import RegressionDecoder
 from spanet.network.prediction_selection import extract_predictions
 from spanet.network.layers.branch_decoder import BranchDecoder
-from spanet.network.layers.jet_embedding import JetEmbedding
+from spanet.network.layers.embedding import CombinedVectorEmbedding
 from spanet.network.layers.jet_encoder import JetEncoder
 from spanet.options import Options
 
@@ -35,16 +36,34 @@ class JetReconstructionNetwork(JetReconstructionBase):
                                options.dropout,
                                options.transformer_activation)
 
-        self.embeddings = nn.ModuleDict({
-            input_name: JetEmbedding(options, self.training_dataset.event_info.num_features(input_name))
-            for input_name in self.input_names
-        })
+        self.embedding = CombinedVectorEmbedding(
+            options,
+            self.training_dataset.event_info,
+            self.training_dataset
+        )
 
-        self.encoder = JetEncoder(options, transformer_options)
+        self.encoder = JetEncoder(
+            options,
+            transformer_options
+        )
+
         self.decoders = nn.ModuleList([
-            BranchDecoder(options, size, permutation_indices, transformer_options, self.enable_softmax)
-            for _, (size, permutation_indices) in self.training_dataset.target_symmetries
+            BranchDecoder(
+                options,
+                name,
+                self.training_dataset.event_info.targets[name][0],
+                size,
+                permutation_indices,
+                transformer_options,
+                self.enable_softmax
+            )
+            for name, (size, permutation_indices) in self.training_dataset.target_symmetries
         ])
+
+        self.regression_decoder = RegressionDecoder(
+            options,
+            self.training_dataset
+        )
 
         # An example input for generating the network's graph, batch size of 2
         # self.example_input_array = tuple(x.contiguous() for x in self.training_dataset[:2][0])
@@ -53,37 +72,40 @@ class JetReconstructionNetwork(JetReconstructionBase):
     def enable_softmax(self):
         return True
 
-    def forward(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> Tuple[Tuple[Tensor, Tensor], ...]:
-        embeddings = []
-        padding_masks = []
-        sequence_masks = []
-
-        for input_name, (source_data, source_mask) in zip(self.input_names, sources):
-            # Normalize incoming data
-            source_data = (source_data - self.mean[input_name]) / self.std[input_name]
-            source_data = source_mask.unsqueeze(2) * source_data
-
-            embedding, padding_mask, sequence_mask = self.embeddings[input_name](source_data, source_mask)
-
-            embeddings.append(embedding)
-            padding_masks.append(padding_mask)
-            sequence_masks.append(sequence_mask)
-
-        embeddings = torch.cat(embeddings, dim=0)
-        padding_masks = torch.cat(padding_masks, dim=1)
-        sequence_masks = torch.cat(sequence_masks, dim=0)
+    def forward(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> Tuple[Tensor, Tensor, Dict[str, Tensor]]:
+        # Embed all of the different input vectors into the same latent space.
+        embeddings, padding_masks, sequence_masks, global_masks = self.embedding(sources)
 
         # Extract features from data using transformer
-        hidden = self.encoder(embeddings, padding_masks, sequence_masks)
+        hidden, event_vector = self.encoder(embeddings, padding_masks, sequence_masks)
+
+        assignments = []
+        presences = []
+
+        vectors = {
+            "EVENT": event_vector
+        }
+
+        for decoder in self.decoders:
+            particle = decoder(hidden, padding_masks, sequence_masks, global_masks)
+            selection, presence, selection_mask, particle_vector, daughter_vectors = particle
+
+            assignments.append(selection)
+            presences.append(presence)
+
+            vectors["/".join([decoder.name, "PARTICLE"])] = particle_vector
+
+            for daughter_name, daughter_vector in zip(decoder.daughter_names, daughter_vectors):
+                vectors["/".join([decoder.name, daughter_name])] = daughter_vector
 
         # Pass the shared hidden state to every decoder branch
-        return tuple(decoder(hidden, padding_masks, sequence_masks) for decoder in self.decoders)
+        return assignments, presences, self.regression_decoder(vectors)
 
     def predict_jets(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> np.ndarray:
         # Run the base prediction step
         with torch.no_grad():
             predictions = []
-            for prediction, _, _ in self.forward(sources):
+            for prediction in self.forward(sources)[0]:
                 prediction[torch.isnan(prediction)] = -np.inf
                 predictions.append(prediction)
 
@@ -92,15 +114,18 @@ class JetReconstructionNetwork(JetReconstructionBase):
 
     def predict_jets_and_particle_scores(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> Tuple[TArray, TArray]:
         with torch.no_grad():
-            predictions = []
+            predictions, classifications, regressions = self.forward(sources)
+
+            clean_predictions = []
             scores = []
-            for prediction, classification, _ in self.forward(sources):
+
+            for prediction, classification in zip(predictions, classifications):
                 prediction[torch.isnan(prediction)] = -np.inf
-                predictions.append(prediction)
+                clean_predictions.append(prediction)
 
                 scores.append(torch.sigmoid(classification).cpu().numpy())
 
-            return extract_predictions(predictions), np.stack(scores)
+            return extract_predictions(clean_predictions), np.stack(scores), regressions
 
     def predict_jets_and_particles(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> Tuple[TArray, TArray]:
         predictions, scores = self.predict_jets_and_particle_scores(sources)

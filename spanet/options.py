@@ -16,6 +16,8 @@ class Options(Namespace):
         # Hidden dimensionality of the first embedding layer.
         self.initial_embedding_dim: int = 16
 
+        self.position_embedding_dim: int = 32
+
         # Maximum Number of double-sized embedding layers to add between the features and the encoder.
         # The size of the embedding dimension will be capped at the hidden_dim,
         # So setting this option to a very large integer will just keep embedding up to the hidden_dim.
@@ -152,6 +154,9 @@ class Options(Namespace):
 
         # Scalar term for the symmetric KL-divergence loss between distributions.
         self.kl_loss_scale: float = 0.0
+
+        # Scalar term for regression L2 loss term
+        self.regression_loss_scale: float = 0.0
 
         # Optimizer l2 penalty based on weight values.
         self.l2_penalty: float = 0.0

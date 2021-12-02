@@ -30,7 +30,7 @@ permutations = JET_SYMMETRY_GROUP
 
 We will now go over each of the capitalized options to explain what
 they can represent. You may also view an example of a complete ini file
-in [`ttbar.ini`](../event_files/ttbar.ini).
+in [`ttbar.ini`](../event_files/old/ttbar.ini).
 
 ## SOURCE
 One of the two **required** headers is `[SOURCE]` which will contain

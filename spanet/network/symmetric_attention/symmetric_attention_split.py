@@ -71,7 +71,7 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
 
         return operations + result
 
-    def forward(self, x: Tensor, padding_mask: Tensor, sequence_mask: Tensor) -> Tensor:
+    def forward(self, x: Tensor, padding_mask: Tensor, sequence_mask: Tensor) -> Tuple[Tensor, List[Tensor]]:
         """ Perform symmetric attention on the hidden vectors and produce the output logits.
 
         This is the approximate version which learns embedding layers and computes a trivial linear form.
@@ -97,12 +97,13 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
         # ys: [[T, B, D], ...]
         # ---------------------------------------------------------
         ys = []
+        daughter_vectors = []
         for encoder, linear_layer, activation in zip(self.encoders, self.linear_layers, self.activations):
             # ------------------------------------------------------
             # First pass the input through this jet's encoder stack.
             # y: [T, B, D]
             # ------------------------------------------------------
-            y = encoder(x, padding_mask, sequence_mask)
+            y, daughter_vector = encoder(x, padding_mask, sequence_mask)
 
             # --------------------------------------------------------
             # Flatten and apply the final linear layer to each vector.
@@ -114,6 +115,7 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
             y = y.reshape(num_jets, batch_size, self.attention_dim) * sequence_mask
 
             ys.append(y)
+            daughter_vectors.append(daughter_vector)
 
         # -------------------------------------------------------
         # Construct the output logits via general self-attention.
@@ -129,4 +131,4 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
         # TODO Perhaps make the encoder layers match in the symmetric dimensions.
         output = self.symmetrize_tensor(output)
 
-        return output
+        return output, daughter_vectors
