@@ -42,9 +42,12 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
             for _ in range(order)
         ])
 
+        # TODO this activation doesnt make sense since we are limiting our available final layers...
+        # TODO run some experiments on this.
         # Add additional non-linearity on top of the linear layer.
         self.activations = nn.ModuleList([
-            nn.PReLU(self.attention_dim)
+            # nn.PReLU(self.attention_dim)
+            nn.Identity()
             for _ in range(order)
         ])
 
