@@ -294,7 +294,7 @@ class JetReconstructionDataset(Dataset):
 
         return targets
 
-    def load_regressions(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Mapping[str, Tuple[Tensor, Tensor]]:
+    def load_regressions(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Dict[str, Tensor]:
         """ Load regression target data
 
         Parameters
@@ -309,7 +309,10 @@ class JetReconstructionDataset(Dataset):
         OrderedDict: str -> (Tensor, Tensor)
             A dictionary mapping the target name to the target indices and mask.
         """
-        def load_regression(group):
+
+        # Helper function for loading in a particular set of regressions.
+        # Returns None if no regression is defined.
+        def load_regression(group: List[str]) -> Optional[Tensor]:
             regression_info = self.event_info.regressions
 
             for key in group:
@@ -329,6 +332,7 @@ class JetReconstructionDataset(Dataset):
 
             return regression_data
 
+        # Load all of the possible regressions in the event.
         regressions = OrderedDict()
         regressions[SpecialKey.Event] = load_regression([SpecialKey.Event])
         for particle in self.event_info.targets:
@@ -337,7 +341,12 @@ class JetReconstructionDataset(Dataset):
             for daughter in self.event_info.targets[particle][0]:
                 regressions["/".join((particle, daughter))] = load_regression([particle, daughter])
 
-        return regressions
+        # Remove any non-existing entries.
+        return OrderedDict(
+            (key, value)
+            for key, value in regressions.items()
+            if value is not None
+        )
 
     def compute_statistics(self,
                            mean: Optional[Mapping[str, Tensor]] = None,
@@ -473,6 +482,9 @@ class JetReconstructionDataset(Dataset):
             masks = masks[event_mask].contiguous()
 
             self.targets[key] = (targets, masks)
+
+        for key, regressions in self.regressions.items():
+            self.regressions[key] = regressions[event_mask]
 
         self.num_events = event_mask.sum().item()
 

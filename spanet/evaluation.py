@@ -58,7 +58,7 @@ def predict_on_test_dataset(model: JetReconstructionModel, cuda: bool = False):
         if cuda:
             source_data = [x.cuda() for x in source_data]
 
-        predictions, classifications = model.predict_jets_and_particles(*source_data)
+        predictions, classifications = model.predict_assignments_and_detections(*source_data)
 
         full_targets.append([x[0].numpy() for x in targets])
         full_masks.append([x[1].numpy() for x in targets])

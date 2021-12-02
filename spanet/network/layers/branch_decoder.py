@@ -43,7 +43,7 @@ class BranchDecoder(nn.Module):
         self.attention = attention_layer(options, order, transformer_options, permutation_indices)
 
         # Optional output predicting if the particle was present or not
-        self.presence_classifier = BranchLinear(options, options.num_branch_classification_layers)
+        self.detection_classifier = BranchLinear(options, options.num_branch_classification_layers)
 
         self.num_targets = len(self.attention.permutation_group)
         self.permutation_indices = self.attention.permutation_indices
@@ -126,32 +126,32 @@ class BranchDecoder(nn.Module):
 
         # -----------------------------------------------
         # Run the encoded vectors through the classifier.
-        # presence: [B, 1]
+        # detection: [B, 1]
         # -----------------------------------------------
-        presence = self.presence_classifier(particle_vector).squeeze()
+        detection = self.detection_classifier(particle_vector).squeeze()
 
-        # -------------------------------------------------------
-        # Extract sequential vectors only for the selection step.
+        # --------------------------------------------------------
+        # Extract sequential vectors only for the assignment step.
         # sequential_particle_vectors : [TS, B, D]
         # sequential_padding_mask : [B, TS]
         # sequential_sequence_mask : [TS, B, 1]
-        # -------------------------------------------------------
+        # --------------------------------------------------------
         sequential_particle_vectors = encoded_vectors[global_mask].contiguous()
         sequential_padding_mask = padding_mask[:, global_mask].contiguous()
         sequential_sequence_mask = sequence_mask[global_mask].contiguous()
 
-        # -----------------------------------------------------------------
-        # Create the jet distribution logits and the correctly shaped mask.
-        # selection : [TS, TS, ...]
-        # selection_mask : [TS, TS, ...]
-        # -----------------------------------------------------------------
-        selection, daughter_vectors = self.attention(
+        # --------------------------------------------------------------------
+        # Create the vector distribution logits and the correctly shaped mask.
+        # assignment : [TS, TS, ...]
+        # assignment_mask : [TS, TS, ...]
+        # --------------------------------------------------------------------
+        assignment, daughter_vectors = self.attention(
             sequential_particle_vectors,
             sequential_padding_mask,
             sequential_sequence_mask
         )
 
-        selection_mask = self.create_output_mask(selection, sequential_sequence_mask)
+        assignment_mask = self.create_output_mask(assignment, sequential_sequence_mask)
 
         # ---------------------------------------------------------------------------
         # Need to reshape output to make softmax-calculation easier.
@@ -161,17 +161,17 @@ class BranchDecoder(nn.Module):
         # mask : [TS, TS, ...]
         # ---------------------------------------------------------------------------
         if self.softmax_output:
-            original_shape = selection.shape
+            original_shape = assignment.shape
             batch_size = original_shape[0]
 
-            selection = selection.reshape(batch_size, -1)
-            selection_mask = selection_mask.reshape(batch_size, -1)
+            assignment = assignment.reshape(batch_size, -1)
+            assignment_mask = assignment_mask.reshape(batch_size, -1)
 
-            selection = masked_log_softmax(selection, selection_mask)
-            selection = selection.view(*original_shape)
+            assignment = masked_log_softmax(assignment, assignment_mask)
+            assignment = assignment.view(*original_shape)
 
             # mask = mask.view(*original_shape)
             # offset = torch.log(mask.sum((1, 2, 3), keepdims=True).float()) * self.combinatorial_scale
             # output = output + offset
 
-        return selection, presence, selection_mask, particle_vector, daughter_vectors
+        return assignment, detection, assignment_mask, particle_vector, daughter_vectors

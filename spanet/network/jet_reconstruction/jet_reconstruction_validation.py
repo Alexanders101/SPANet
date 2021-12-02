@@ -89,7 +89,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
     def validation_step(self, batch, batch_idx) -> Dict[str, np.float32]:
         # Run the base prediction step
         sources, num_jets, targets, regression_targets = batch
-        jet_predictions, particle_scores, regressions = self.predict_jets_and_particle_scores(sources)
+        jet_predictions, particle_scores, regressions = self.predict(sources)
 
         batch_size = num_jets.shape[0]
         num_targets = len(targets)
@@ -100,6 +100,11 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         for i, (target, mask) in enumerate(targets):
             stacked_targets[i] = target.detach().cpu().numpy()
             stacked_masks[i] = mask.detach().cpu().numpy()
+
+        regression_targets = {
+            key: value.detach().cpu().numpy()
+            for key, value in regression_targets.items()
+        }
 
         metrics = self.evaluator.full_report_string(jet_predictions, stacked_targets, stacked_masks, prefix="Purity/")
 
@@ -113,7 +118,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         metrics.update(self.compute_metrics(jet_predictions, particle_scores, stacked_targets, stacked_masks))
 
         for key in regressions:
-            percent_error = torch.abs((regressions[key] - regression_targets[key]) / regression_targets[key])
+            percent_error = np.abs((regressions[key] - regression_targets[key]) / regression_targets[key])
             self.log(f"REGRESSION/{key}_percent_error", percent_error.mean())
 
         for name, value in metrics.items():
