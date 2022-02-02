@@ -12,7 +12,21 @@ from torch import Tensor
 from spanet.dataset.event_info import EventInfo
 
 # The possible types for the limit index parameter.
-TLimitIndex = Union[Tuple[float, float], List[float], float, np.ndarray, Tensor]
+TLimitIndex = Union[
+    Tuple[float, float],
+    List[float],
+    float,
+    np.ndarray,
+    Tensor
+]
+
+TBatch = Tuple[
+    Tuple[Tuple[Tensor, Tensor], ...],
+    Tensor,
+    Tuple[Tuple[Tensor, Tensor], ...],
+    Dict[str, Tensor],
+    Dict[str, Tensor]
+]
 
 # Special Keys used to describe event information.
 SpecialKey = EventInfo.SpecialKey
@@ -96,6 +110,7 @@ class JetReconstructionDataset(Dataset):
 
             self.targets = self.load_targets(file, limit_index)
             self.regressions = self.load_regressions(file, limit_index)
+            self.classifications = self.load_classifications(file, limit_index)
 
             self.num_events = limit_index.shape[0]
 
@@ -348,6 +363,57 @@ class JetReconstructionDataset(Dataset):
             if value is not None
         )
 
+    def load_classifications(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Dict[str, Tensor]:
+        """ Load classification target data
+
+        Parameters
+        ----------
+        hdf5_file: h5py.File
+            HDF5 file containing the event.
+        limit_index: array or Tensor
+            The limiting array for selecting a subset of dataset for this object.
+
+        Returns
+        -------
+        OrderedDict: str -> (Tensor, Tensor)
+            A dictionary mapping the target name to the target indices and mask.
+        """
+
+        # Helper function for loading in a particular set of regressions.
+        # Returns None if no regression is defined.
+        def load_classification(group: List[str]) -> Optional[Tensor]:
+            classification_info = self.event_info.classifications
+
+            for key in group:
+                classification_info = classification_info[key]
+
+            if len(classification_info) == 0:
+                return None
+
+            classification_data = torch.empty(len(classification_info), self.num_events, dtype=torch.int64)
+
+            for index, key in enumerate(classification_info):
+                current_dataset = self.dataset(hdf5_file, [SpecialKey.Classifications, *group], key)
+                current_dataset.read_direct(classification_data[index].numpy())
+
+            return classification_data.transpose(0, 1)[limit_index]
+
+        # Load all of the possible classifications in the event.
+        classifications = OrderedDict()
+        classifications[SpecialKey.Event] = load_classification([SpecialKey.Event])
+        for particle in self.event_info.targets:
+            classifications["/".join((particle, SpecialKey.Particle))] = load_classification([particle, SpecialKey.Particle])
+
+            for daughter in self.event_info.targets[particle][0]:
+                classifications["/".join((particle, daughter))] = load_classification([particle, daughter])
+
+        # Remove any non-existing entries.
+        return OrderedDict(
+            (key, value)
+            for key, value in classifications.items()
+            if value is not None
+        )
+
     def compute_statistics(self,
                            mean: Optional[Mapping[str, Tensor]] = None,
                            std: Optional[Mapping[str, Tensor]] = None) -> Tuple[Mapping[str, Tensor], Mapping[str, Tensor]]:
@@ -397,19 +463,26 @@ class JetReconstructionDataset(Dataset):
             The mean and standard deviation for existing regression values.
         """
 
-        regression_means = {
-            key: value.mean(0, keepdim=True)
+        regression_means = OrderedDict((
+            (key, value.mean(0, keepdim=True))
             for key, value in self.regressions.items()
             if value is not None
-        }
+        ))
 
-        regression_stds = {
-            key: value.std(0, keepdim=True)
+        regression_stds = OrderedDict((
+            (key, value.std(0, keepdim=True))
             for key, value in self.regressions.items()
             if value is not None
-        }
+        ))
 
         return regression_means, regression_stds
+
+    def compute_classification_class_counts(self) -> Dict[str, Tensor]:
+        return OrderedDict((
+            (key, value.max(0).values + 1)
+            for key, value in self.classifications.items()
+            if value is not None
+        ))
 
     def compute_particle_balance(self):
         # Extract just the mask information from the dataset.
@@ -486,6 +559,9 @@ class JetReconstructionDataset(Dataset):
         for key, regressions in self.regressions.items():
             self.regressions[key] = regressions[event_mask]
 
+        for key, classifications in self.classifications.items():
+            self.classifications[key] = classifications[event_mask]
+
         self.num_events = event_mask.sum().item()
 
     def limit_dataset_to_partial_events(self):
@@ -504,12 +580,7 @@ class JetReconstructionDataset(Dataset):
     def __len__(self) -> int:
         return self.num_events
 
-    def __getitem__(self, item) -> Tuple[
-        Tuple[Tuple[Tensor, Tensor], ...],
-        Tensor,
-        Tuple[Tuple[Tensor, Tensor], ...],
-        Dict[str, Tensor]
-    ]:
+    def __getitem__(self, item) -> TBatch:
         sources = tuple(
             (self.source_data[input_name][item], self.source_mask[input_name][item])
             for input_name in self.source_data
@@ -526,4 +597,10 @@ class JetReconstructionDataset(Dataset):
             if value is not None
         }
 
-        return sources, self.num_sequential_vectors[item], targets, regressions
+        classifications = {
+            key: value[item]
+            for key, value in self.classifications.items()
+            if value is not None
+        }
+
+        return sources, self.num_sequential_vectors[item], targets, regressions, classifications

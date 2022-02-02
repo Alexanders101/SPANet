@@ -39,6 +39,7 @@ class EventInfo:
         Particle = "PARTICLE"
         Regressions = "REGRESSIONS"
         Permutations = "PERMUTATIONS"
+        Classifications = "CLASSIFICATIONS"
 
     Feature = namedtuple("Feature", ["name", "normalize", "log_scale"])
 
@@ -48,7 +49,8 @@ class EventInfo:
                  event_particles: Tuple[str, ...],
                  event_permutations: Union[str, List[Tuple[str, ...]]],
                  particles: Dict[str, Tuple[Tuple[str, ...], Union[str, List[Tuple[str, ...]]]]],
-                 regressions: Dict[str, Union[List[str], Dict[str, List[str]]]]):
+                 regressions: Dict[str, Union[List[str], Dict[str, List[str]]]],
+                 classifications: Dict[str, Union[List[str], Dict[str, List[str]]]]):
 
         self.input_types = input_types
         self.input_names = list(input_types)
@@ -87,6 +89,7 @@ class EventInfo:
             self.mapped_targets[target] = (num_jets, mapped_permutations)
 
         self.regressions = regressions
+        self.classifications = classifications
 
     def normalized_features(self, input_name):
         return np.array([feature[1] for feature in self.input_features[input_name]])
@@ -243,7 +246,7 @@ class EventInfo:
 
             daughter_particles[event_particle] = (particle_jets, particle_permutations)
 
-        # Extract Regression information.
+        # Extract Regression Information.
         # -------------------------------
         regressions = key_with_default(config, cls.SpecialKey.Regressions, default={})
         if cls.SpecialKey.Event not in regressions:
@@ -260,4 +263,29 @@ class EventInfo:
                 if daughter not in regressions[particle]:
                     regressions[particle][daughter] = []
 
-        return cls(input_types, input_features, event_particles, event_permutations, daughter_particles, regressions)
+        # Extract Classification Information.
+        # -----------------------------------
+        classifications = key_with_default(config, cls.SpecialKey.Classifications, default={})
+        if cls.SpecialKey.Event not in classifications:
+            classifications[cls.SpecialKey.Event] = []
+
+        for particle in event_particles:
+            if particle not in classifications:
+                classifications[particle] = {}
+
+            if cls.SpecialKey.Particle not in classifications[particle]:
+                classifications[particle][cls.SpecialKey.Particle] = []
+
+            for daughter in daughter_particles[particle][0]:
+                if daughter not in classifications[particle]:
+                    classifications[particle][daughter] = []
+
+        return cls(
+            input_types,
+            input_features,
+            event_particles,
+            event_permutations,
+            daughter_particles,
+            regressions,
+            classifications
+        )
