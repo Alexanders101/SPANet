@@ -11,7 +11,7 @@ class SymmetricEvaluator:
     def __init__(self, event_info: EventInfo):
         self.event_info = event_info
         self.event_group = event_info.event_symbolic_group
-        self.target_groups = event_info.target_symbolic_groups
+        self.target_groups = event_info.assignment_symbolic_groups
 
         # Gather all of the Similar particles together based on the permutation groups
         clusters = []

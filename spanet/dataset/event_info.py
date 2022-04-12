@@ -27,10 +27,6 @@ def key_with_default(database, key, default):
 
 
 class EventInfo:
-    class InputType:
-        Global = "GLOBAL"
-        Sequential = "SEQUENTIAL"
-
     class SpecialKey:
         Mask = "MASK"
         Event = "EVENT"
@@ -56,37 +52,25 @@ class EventInfo:
         self.input_names = list(input_types)
         self.input_features = input_features
 
-        self.sequential_inputs = [
-            input_name
-            for input_name in self.input_names
-            if self.input_types[input_name] == self.InputType.Sequential
-        ]
-
-        self.global_inputs = [
-            input_name
-            for input_name in self.input_names
-            if self.input_types[input_name] == self.InputType.Global
-        ]
-
         self.event_particles = event_particles
         self.event_permutations = event_permutations
 
-        self.targets = particles
-        self.target_mapping = self.variable_mapping(self.targets)
+        self.assignments = particles
+        self.assignment_mapping = self.variable_mapping(self.assignments)
         self.event_symmetries = (
             len(self.event_particles),
-            self.apply_mapping(self.event_permutations, self.target_mapping)
+            self.apply_mapping(self.event_permutations, self.assignment_mapping)
         )
 
-        self.jet_mappings = OrderedDict()
-        self.mapped_targets = OrderedDict()
-        for target, (jets, jet_permutations) in self.targets.items():
+        self.vector_mappings = OrderedDict()
+        self.mapped_assignments = OrderedDict()
+        for target, (jets, jet_permutations) in self.assignments.items():
             num_jets = len(jets)
             jet_mapping = self.variable_mapping(jets)
             mapped_permutations = self.apply_mapping(jet_permutations, jet_mapping)
 
-            self.jet_mappings[target] = jet_mapping
-            self.mapped_targets[target] = (num_jets, mapped_permutations)
+            self.vector_mappings[target] = jet_mapping
+            self.mapped_assignments[target] = (num_jets, mapped_permutations)
 
         self.regressions = regressions
         self.classifications = classifications
@@ -118,10 +102,10 @@ class EventInfo:
         return set(chain.from_iterable(map(lambda x: permutations(x, r=2), event_permutations)))
 
     @property
-    def target_permutation_groups(self):
+    def assignment_permutation_groups(self):
         output = []
 
-        for name, (order, symmetries) in self.mapped_targets.items():
+        for name, (order, symmetries) in self.mapped_assignments.items():
             symmetries = [] if symmetries is None else symmetries
             permutation_group = complete_symmetry_group(order, symmetries)
             output.append((name, permutation_group))
@@ -129,10 +113,10 @@ class EventInfo:
         return OrderedDict(output)
 
     @property
-    def target_symbolic_groups(self):
+    def assignment_symbolic_groups(self):
         output = []
 
-        for name, (order, symmetries) in self.mapped_targets.items():
+        for name, (order, symmetries) in self.mapped_assignments.items():
             symmetries = [] if symmetries is None else symmetries
             permutation_group = complete_symbolic_symmetry_group(order, symmetries)
             output.append((name, permutation_group))
