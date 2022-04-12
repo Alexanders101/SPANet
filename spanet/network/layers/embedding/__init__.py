@@ -1,1 +1,1 @@
-from spanet.network.layers.embedding.combined_vector_embedding import CombinedVectorEmbedding
+from spanet.network.layers.embedding.multi_input_vector_embedding import MultiInputVectorEmbedding
