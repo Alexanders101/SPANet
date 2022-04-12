@@ -1,44 +1,42 @@
 from typing import Optional
 
 import torch
-from torch import Tensor, nn
+from torch import nn, Tensor
 from torch.nn import init
+
 
 # Pytorch Masked BatchNorm
 # Based on this implementation
 # https://gist.github.com/yangkky/364413426ec798589463a3a88be24219
-
-
-class MaskedBatchNorm1D(nn.Module):
-
+class MaskedBatchNorm(nn.Module):
     __constants__ = ["num_features", "eps", "momentum", "affine", "track_running_stats"]
 
     def __init__(self,
-                 num_features: int,
+                 output_dim: int,
                  eps: float = 1e-5,
                  momentum: float = 0.1,
                  affine: bool = True,
                  track_running_stats: bool = True):
-        super(MaskedBatchNorm1D, self).__init__()
+        super(MaskedBatchNorm, self).__init__()
 
         self.track_running_stats = track_running_stats
-        self.num_features = num_features
+        self.num_features = output_dim
         self.momentum = momentum
         self.affine = affine
         self.eps = eps
 
         # Register affine transform learnable parameters
         if affine:
-            self.weight = nn.Parameter(torch.Tensor(1, 1, num_features))
-            self.bias = nn.Parameter(torch.Tensor(1, 1, num_features))
+            self.weight = nn.Parameter(torch.Tensor(1, 1, output_dim))
+            self.bias = nn.Parameter(torch.Tensor(1, 1, output_dim))
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
 
         # Register moving average storable parameters
         if self.track_running_stats:
-            self.register_buffer('running_mean', torch.zeros(1, 1, num_features))
-            self.register_buffer('running_var', torch.ones(1, 1, num_features))
+            self.register_buffer('running_mean', torch.zeros(1, 1, output_dim))
+            self.register_buffer('running_var', torch.ones(1, 1, output_dim))
             self.register_buffer('num_batches_tracked', torch.tensor(0, dtype=torch.long))
         else:
             self.register_parameter('running_mean', None)
@@ -95,3 +93,49 @@ class MaskedBatchNorm1D(nn.Module):
             normed_images = normed_images * self.weight + self.bias
 
         return normed_images * mask.unsqueeze(2)
+
+
+class BatchNorm(nn.Module):
+    __constants__ = ['output_dim']
+
+    def __init__(self, output_dim: int):
+        super(BatchNorm, self).__init__()
+
+        self.output_dim = output_dim
+        self.normalization = nn.BatchNorm1d(output_dim)
+
+    # noinspection PyUnusedLocal
+    def forward(self, x: Tensor, sequence_mask: Tensor) -> Tensor:
+        max_jets, batch_size, output_dim = x.shape
+
+        y = x.reshape(max_jets * batch_size, output_dim)
+        y = self.normalization(y)
+        return y.reshape(max_jets, batch_size, output_dim)
+
+
+class LayerNorm(nn.Module):
+    __constants__ = ['output_dim']
+
+    def __init__(self, output_dim: int):
+        super(LayerNorm, self).__init__()
+
+        self.output_dim = output_dim
+        self.normalization = nn.LayerNorm(output_dim)
+
+    # noinspection PyUnusedLocal
+    def forward(self, x: Tensor, sequence_mask: Tensor) -> Tensor:
+        return self.normalization(x)
+
+
+# noinspection SpellCheckingInspection
+def create_normalization(normalization: str, output_dim: int) -> nn.Module:
+    normalization = normalization.lower().replace("_", "").replace(" ", "")
+
+    if normalization == "batchnorm":
+        return BatchNorm(output_dim)
+    elif normalization == "maskedbatchnorm":
+        return MaskedBatchNorm(output_dim)
+    elif normalization == "layernorm":
+        return LayerNorm(output_dim)
+    else:
+        return nn.Identity()
