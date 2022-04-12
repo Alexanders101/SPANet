@@ -7,7 +7,7 @@ from torch import Tensor, nn, jit
 from spanet.options import Options
 from spanet.network.utilities import masked_log_softmax
 from spanet.network.layers.stacked_encoder import StackedEncoder
-from spanet.network.layers.branch_classifier import BranchLinear
+from spanet.network.layers.branch_linear import BranchLinear
 from spanet.network.symmetric_attention import SymmetricAttentionSplit, SymmetricAttentionFull
 
 
@@ -22,7 +22,6 @@ class BranchDecoder(nn.Module):
                  daughter_names: List[str],
                  order: int,
                  permutation_indices: List[Tuple[int, ...]],
-                 transformer_options: Tuple[int, int, int, float, str],
                  softmax_output: bool = True):
         super(BranchDecoder, self).__init__()
 
@@ -33,17 +32,18 @@ class BranchDecoder(nn.Module):
         self.combinatorial_scale = options.combinatorial_scale
 
         # Each branch has a personal encoder stack to extract particle-level data
-        self.encoder = StackedEncoder(options,
-                                      options.num_branch_embedding_layers,
-                                      options.num_branch_encoder_layers,
-                                      transformer_options)
+        self.encoder = StackedEncoder(
+            options,
+            options.num_branch_embedding_layers,
+            options.num_branch_encoder_layers
+        )
 
         # Symmetric attention to create the output distribution
         attention_layer = SymmetricAttentionSplit if options.split_symmetric_attention else SymmetricAttentionFull
-        self.attention = attention_layer(options, order, transformer_options, permutation_indices)
+        self.attention = attention_layer(options, order, permutation_indices)
 
         # Optional output predicting if the particle was present or not
-        self.detection_classifier = BranchLinear(options, options.num_branch_classification_layers)
+        self.detection_classifier = BranchLinear(options, options.num_detector_layers)
 
         self.num_targets = len(self.attention.permutation_group)
         self.permutation_indices = self.attention.permutation_indices

@@ -1,11 +1,10 @@
 from typing import Dict
 from collections import OrderedDict
 
-import torch
-from torch import Tensor, nn, jit
+from torch import Tensor, nn
 
-from spanet.network.layers.branch_classifier import BranchLinear
 from spanet.options import Options
+from spanet.network.layers.branch_linear import NormalizedBranchLinear
 from spanet.dataset.jet_reconstruction_dataset import JetReconstructionDataset
 
 
@@ -18,23 +17,21 @@ class RegressionDecoder(nn.Module):
         # Compute training dataset statistics to fix the final weight and bias.
         means, stds = training_dataset.compute_regression_statistics()
 
-        self.means = nn.ParameterDict({
-            key: nn.Parameter(value)
-            for key, value in means.items()
-        })
-
-        self.stds = nn.ParameterDict({
-            key: nn.Parameter(value)
-            for key, value in stds.items()
-        })
-
         # A unique linear decoder for each possible regression.
         # TODO make these non-unique for symmetric indices.
-        self.networks = nn.ModuleDict(OrderedDict(
-            (name, BranchLinear(options, options.num_branch_classification_layers, data.shape[1]))
-            for name, data in training_dataset.regressions.items()
-            if data is not None
-        ))
+        networks = OrderedDict()
+        for name, data in training_dataset.regressions.items():
+            if data is None:
+                continue
+
+            networks[name] = NormalizedBranchLinear(
+                options,
+                options.num_regression_layers,
+                means[name],
+                stds[name]
+            )
+
+        self.networks = nn.ModuleDict(networks)
 
     def forward(self, vectors: Dict[str, Tensor]) -> Dict[str, Tensor]:
 
@@ -42,6 +39,6 @@ class RegressionDecoder(nn.Module):
         # outputs: Dict with mapping name -> [B, O_name]
 
         return {
-            key: self.stds[key] * network(vectors[key]) + self.means[key]
+            key: network(vectors[key])
             for key, network in self.networks.items()
         }

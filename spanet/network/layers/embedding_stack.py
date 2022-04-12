@@ -3,7 +3,8 @@ from typing import List
 from torch import Tensor, nn
 
 from spanet.options import Options
-from spanet.network.layers.linear_block import LinearBlock
+from spanet.network.layers.linear_block.basic_block import BasicBlock
+from spanet.network.layers.linear_block import create_linear_block
 
 
 class EmbeddingStack(nn.Module):
@@ -16,7 +17,7 @@ class EmbeddingStack(nn.Module):
         self.embedding_layers = nn.ModuleList(self.create_embedding_layers(options, input_dim))
 
     @staticmethod
-    def create_embedding_layers(options: Options, input_dim: int) -> List[LinearBlock]:
+    def create_embedding_layers(options: Options, input_dim: int) -> List[BasicBlock]:
         """ Create a stack of linear layer with increasing hidden dimensions.
 
         Each hidden layer will have double the dimensions as the previous, beginning with the
@@ -24,7 +25,12 @@ class EmbeddingStack(nn.Module):
         """
 
         # Initial embedding layer to just project to our shared first dimension.
-        embedding_layers = [LinearBlock(options, input_dim, options.initial_embedding_dim)]
+        embedding_layers = [create_linear_block(
+            options,
+            input_dim,
+            options.initial_embedding_dim,
+            options.initial_embedding_skip_connections
+        )]
         current_embedding_dim = options.initial_embedding_dim
 
         # Keep doubling dimensions until we reach the desired latent dimension.
@@ -33,11 +39,21 @@ class EmbeddingStack(nn.Module):
             if next_embedding_dim >= options.hidden_dim:
                 break
 
-            embedding_layers.append(LinearBlock(options, current_embedding_dim, next_embedding_dim))
+            embedding_layers.append(create_linear_block(
+                options,
+                current_embedding_dim,
+                next_embedding_dim,
+                options.initial_embedding_skip_connections
+            ))
             current_embedding_dim = next_embedding_dim
 
         # Final embedding layer to ensure proper size on output.
-        embedding_layers.append(LinearBlock(options, current_embedding_dim, options.hidden_dim))
+        embedding_layers.append(create_linear_block(
+            options,
+            current_embedding_dim,
+            options.hidden_dim,
+            options.initial_embedding_skip_connections
+        ))
 
         return embedding_layers
 
