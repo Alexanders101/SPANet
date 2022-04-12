@@ -11,8 +11,8 @@ from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReco
 
 
 class JetReconstructionValidation(JetReconstructionNetwork):
-    def __init__(self, options: Options):
-        super(JetReconstructionValidation, self).__init__(options)
+    def __init__(self, options: Options, torch_script: bool = False):
+        super(JetReconstructionValidation, self).__init__(options, torch_script)
         self.evaluator = SymmetricEvaluator(self.training_dataset.event_info)
 
     @property
@@ -88,8 +88,8 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
     def validation_step(self, batch, batch_idx) -> Dict[str, np.float32]:
         # Run the base prediction step
-        sources, num_jets, targets, regression_targets = batch
-        jet_predictions, particle_scores, regressions = self.predict(sources)
+        sources, num_jets, targets, regression_targets, classification_targets = batch
+        jet_predictions, particle_scores, regressions, classifications = self.predict(sources)
 
         batch_size = num_jets.shape[0]
         num_targets = len(targets)
@@ -106,10 +106,15 @@ class JetReconstructionValidation(JetReconstructionNetwork):
             for key, value in regression_targets.items()
         }
 
+        classification_targets = {
+            key: value.detach().cpu().numpy()
+            for key, value in classification_targets.items()
+        }
+
         metrics = self.evaluator.full_report_string(jet_predictions, stacked_targets, stacked_masks, prefix="Purity/")
 
         # Apply permutation groups for each target
-        for target, prediction, decoder in zip(stacked_targets, jet_predictions, self.decoders):
+        for target, prediction, decoder in zip(stacked_targets, jet_predictions, self.branch_decoders):
             for indices in decoder.permutation_indices:
                 if len(indices) > 1:
                     prediction[:, indices] = np.sort(prediction[:, indices])
@@ -120,6 +125,10 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         for key in regressions:
             percent_error = np.abs((regressions[key] - regression_targets[key]) / regression_targets[key])
             self.log(f"REGRESSION/{key}_percent_error", percent_error.mean())
+
+        for key in classifications:
+            accuracy = (classifications[key] == classification_targets[key])
+            self.log(f"CLASSIFICATION/{key}_accuracy", accuracy.mean())
 
         for name, value in metrics.items():
             if not np.isnan(value):
