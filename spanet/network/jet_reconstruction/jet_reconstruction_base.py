@@ -32,9 +32,18 @@ class JetReconstructionBase(pl.LightningModule):
         # Compute class weights for jets from the training dataset target distribution
         self.balance_jets = False
         if options.balance_jets:
-            jet_weights_tensor = self.training_dataset.compute_jet_balance()
+            jet_weights_tensor = self.training_dataset.compute_vector_balance()
             self.jet_weights_tensor = torch.nn.Parameter(jet_weights_tensor, requires_grad=False)
             self.balance_jets = True
+
+        self.balance_classifications = options.balance_classifications
+        if self.balance_classifications:
+            classification_weights = {
+                key: torch.nn.Parameter(value, requires_grad=False)
+                for key, value in self.training_dataset.compute_classification_balance().items()
+            }
+
+            self.classification_weights = torch.nn.ParameterDict(classification_weights)
 
         # Helper arrays for permutation groups. Used for the partial-event loss functions.
         event_permutation_group = np.array(self.training_dataset.event_permutation_group)

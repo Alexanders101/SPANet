@@ -4,19 +4,23 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
-from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
-from spanet.network.layers.regression_decoder import RegressionDecoder
-from spanet.network.prediction_selection import extract_predictions
-from spanet.network.layers.branch_decoder import BranchDecoder
-from spanet.network.layers.embedding import CombinedVectorEmbedding
-from spanet.network.layers.jet_encoder import JetEncoder
 from spanet.options import Options
+
+from spanet.network.layers.vector_encoder import JetEncoder
+from spanet.network.layers.branch_decoder import BranchDecoder
+from spanet.network.layers.embedding import MultiInputVectorEmbedding
+from spanet.network.layers.regression_decoder import RegressionDecoder
+from spanet.network.layers.classification_decoder import ClassificationDecoder
+
+
+from spanet.network.prediction_selection import extract_predictions
+from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
 
 TArray = np.ndarray
 
 
 class JetReconstructionNetwork(JetReconstructionBase):
-    def __init__(self, options: Options):
+    def __init__(self, options: Options, torch_script: bool = False):
         """ Base class defining the SPANet architecture.
 
         Parameters
@@ -27,43 +31,40 @@ class JetReconstructionNetwork(JetReconstructionBase):
         """
         super(JetReconstructionNetwork, self).__init__(options)
 
+        compile_module = torch.jit.script if torch_script else lambda x: x
+
         self.hidden_dim = options.hidden_dim
 
-        # Shared options for all transformer layers
-        transformer_options = (options.hidden_dim,
-                               options.num_attention_heads,
-                               options.hidden_dim,
-                               options.dropout,
-                               options.transformer_activation)
-
-        self.embedding = CombinedVectorEmbedding(
+        self.embedding = compile_module(MultiInputVectorEmbedding(
             options,
-            self.training_dataset.event_info,
             self.training_dataset
-        )
+        ))
 
-        self.encoder = JetEncoder(
+        self.encoder = compile_module(JetEncoder(
             options,
-            transformer_options
-        )
+        ))
 
-        self.decoders = nn.ModuleList([
+        self.branch_decoders = nn.ModuleList([
             BranchDecoder(
                 options,
                 name,
-                self.training_dataset.event_info.targets[name][0],
+                self.training_dataset.event_info.assignments[name][0],
                 size,
                 permutation_indices,
-                transformer_options,
                 self.enable_softmax
             )
-            for name, (size, permutation_indices) in self.training_dataset.target_symmetries
+            for name, (size, permutation_indices) in self.training_dataset.assignment_symmetries
         ])
 
-        self.regression_decoder = RegressionDecoder(
+        self.regression_decoder = compile_module(RegressionDecoder(
             options,
             self.training_dataset
-        )
+        ))
+
+        self.classification_decoder = compile_module(ClassificationDecoder(
+            options,
+            self.training_dataset
+        ))
 
         # An example input for generating the network's graph, batch size of 2
         # self.example_input_array = tuple(x.contiguous() for x in self.training_dataset[:2][0])
@@ -75,7 +76,7 @@ class JetReconstructionNetwork(JetReconstructionBase):
     def forward(
             self,
             sources: Tuple[Tuple[Tensor, Tensor], ...]
-    ) -> Tuple[List[Tensor], List[Tensor], Dict[str, Tensor]]:
+    ) -> Tuple[List[Tensor], List[Tensor], Dict[str, Tensor], Dict[str, List[Tensor]]]:
         # Embed all of the different input regression_vectors into the same latent space.
         embeddings, padding_masks, sequence_masks, global_masks = self.embedding(sources)
 
@@ -86,11 +87,11 @@ class JetReconstructionNetwork(JetReconstructionBase):
         assignments = []
         detections = []
 
-        regression_vectors = {
+        encoded_vectors = {
             "EVENT": event_vector
         }
 
-        for decoder in self.decoders:
+        for decoder in self.branch_decoders:
             (
                 assignment,
                 detection,
@@ -103,23 +104,24 @@ class JetReconstructionNetwork(JetReconstructionBase):
             detections.append(detection)
 
             # Assign the summarising vectors to their correct structure
-            regression_vectors["/".join([decoder.name, "PARTICLE"])] = particle_vector
+            encoded_vectors["/".join([decoder.name, "PARTICLE"])] = particle_vector
             for daughter_name, daughter_vector in zip(decoder.daughter_names, daughter_vectors):
-                regression_vectors["/".join([decoder.name, daughter_name])] = daughter_vector
+                encoded_vectors["/".join([decoder.name, daughter_name])] = daughter_vector
 
         # Predict the valid regressions for any real values associated with the event
-        regressions = self.regression_decoder(regression_vectors)
+        regressions = self.regression_decoder(encoded_vectors)
+        classifications = self.classification_decoder(encoded_vectors)
 
         # Pass the shared hidden state to every decoder branch
-        return assignments, detections, regressions
+        return assignments, detections, regressions, classifications
 
     def predict(
             self,
             sources: Tuple[Tuple[Tensor, Tensor], ...]
-    ) -> Tuple[TArray, TArray, Dict[str, TArray]]:
+    ) -> Tuple[TArray, TArray, Dict[str, TArray], Dict[str, List[TArray]]]:
 
         with torch.no_grad():
-            assignments, detections, regressions = self.forward(sources)
+            assignments, detections, regressions, classifications = self.forward(sources)
 
             # Extract assignment probabilities and find the least conflicting assignment.
             assignments = extract_predictions([
@@ -139,7 +141,12 @@ class JetReconstructionNetwork(JetReconstructionBase):
                 for key, value in regressions.items()
             }
 
-        return assignments, detections, regressions
+            classifications = {
+                key: value.cpu().argmax(1).numpy()
+                for key, value in classifications.items()
+            }
+
+        return assignments, detections, regressions, classifications
 
     def predict_assignments(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> np.ndarray:
         # Run the base prediction step
@@ -153,10 +160,10 @@ class JetReconstructionNetwork(JetReconstructionBase):
         return extract_predictions(assignments)
 
     def predict_assignments_and_detections(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> Tuple[TArray, TArray]:
-        assignments, detections, regressions = self.predict(sources)
+        assignments, detections, regressions, classifications = self.predict(sources)
 
         # Always predict the particle exists if we didn't train on it
-        if self.options.classification_loss_scale == 0:
+        if self.options.detection_loss_scale == 0:
             detections += 1
 
         return assignments, detections >= 0.5
