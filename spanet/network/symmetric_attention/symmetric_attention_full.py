@@ -17,14 +17,14 @@ class SymmetricAttentionFull(SymmetricAttentionBase):
     def __init__(self,
                  options: Options,
                  order: int,
-                 transformer_options: Tuple[int, int, int, float, str] = None,
                  permutation_indices: List[Tuple[int, ...]] = None,
                  attention_dim: int = None) -> None:
-        super(SymmetricAttentionFull, self).__init__(options,
-                                                     order,
-                                                     transformer_options,
-                                                     permutation_indices,
-                                                     attention_dim)
+        super(SymmetricAttentionFull, self).__init__(
+            options,
+            order,
+            permutation_indices,
+            attention_dim
+        )
 
         self.weights_shape = [self.features] * order
         self.weights = nn.Parameter(torch.randn(*self.weights_shape))

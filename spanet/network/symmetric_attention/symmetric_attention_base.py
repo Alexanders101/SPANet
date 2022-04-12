@@ -16,7 +16,6 @@ class SymmetricAttentionBase(nn.Module):
     def __init__(self,
                  options: Options,
                  order: int,
-                 transformer_options: Tuple[int, int, int, float, str] = None,
                  permutation_indices: List[Tuple[int, ...]] = None,
                  attention_dim: int = None) -> None:
         super(SymmetricAttentionBase, self).__init__()

@@ -3,11 +3,12 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
-from torch import Tensor, nn, jit
+from torch import Tensor, nn
 
 from spanet.options import Options
 from spanet.network.layers.stacked_encoder import StackedEncoder
 from spanet.network.symmetric_attention.symmetric_attention_base import SymmetricAttentionBase
+from spanet.network.layers.linear_block.masking import create_masking
 from spanet.network.utilities.linear_form import create_symmetric_function
 
 
@@ -16,41 +17,37 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
     def __init__(self,
                  options: Options,
                  order: int,
-                 transformer_options: Tuple[int, int, int, float, str] = None,
                  permutation_indices: List[Tuple[int, ...]] = None,
                  attention_dim: int = None) -> None:
 
-        super(SymmetricAttentionSplit, self).__init__(options,
-                                                      order,
-                                                      transformer_options,
-                                                      permutation_indices,
-                                                      attention_dim)
+        super(SymmetricAttentionSplit, self).__init__(
+            options,
+            order,
+            permutation_indices,
+            attention_dim
+        )
 
         # Each potential jet gets its own encoder in order to extract information for attention.
         self.encoders = nn.ModuleList([
-            StackedEncoder(options,
-                           options.num_jet_embedding_layers,
-                           options.num_jet_encoder_layers,
-                           transformer_options)
-
+            StackedEncoder(
+                options,
+                options.num_jet_embedding_layers,
+                options.num_jet_encoder_layers
+            )
             for _ in range(order)
         ])
 
         # After encoding, the jets are fed into a final linear layer to extract logits.
+        # TODO Play around with bias
         self.linear_layers = nn.ModuleList([
-            nn.Linear(options.hidden_dim, self.attention_dim)
+            nn.Linear(options.hidden_dim, self.attention_dim, bias=True)
             for _ in range(order)
         ])
 
-        # TODO this activation doesnt make sense since we are limiting our available final layers...
-        # TODO run some experiments on this.
-        # Add additional non-linearity on top of the linear layer.
-        self.activations = nn.ModuleList([
-            # nn.PReLU(self.attention_dim)
-            nn.Identity()
-            for _ in range(order)
-        ])
+        # Mask the vectors before applying attentino operation.
+        self.masking = create_masking(options.masking)
 
+        # This layer ensures symmetric output by symmetrizing the OUTPUT tensor.
         self.symmetrize_tensor = create_symmetric_function(self.batch_no_identity_permutations)
 
         # Operation to perform general n-dimensional attention.
@@ -93,15 +90,13 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
         output : [T, T, ...]
             Prediction logits for this particle.
         """
-        num_jets, batch_size, features = x.shape
-
         # ---------------------------------------------------------
         # Construct the transformed attention vectors for each jet.
         # ys: [[T, B, D], ...]
         # ---------------------------------------------------------
         ys = []
         daughter_vectors = []
-        for encoder, linear_layer, activation in zip(self.encoders, self.linear_layers, self.activations):
+        for encoder, linear_layer in zip(self.encoders, self.linear_layers):
             # ------------------------------------------------------
             # First pass the input through this jet's encoder stack.
             # y: [T, B, D]
@@ -112,13 +107,12 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
             # Flatten and apply the final linear layer to each vector.
             # y: [T, B, D]
             # ---------------------------------------------------------
-            y = y.reshape(num_jets * batch_size, -1)
             y = linear_layer(y)
-            y = activation(y)
-            y = y.reshape(num_jets, batch_size, self.attention_dim) * sequence_mask
+            y = self.masking(y, sequence_mask)
 
-            ys.append(y)
+            # Accumulate vectors into stack for each daughter of this particle.
             daughter_vectors.append(daughter_vector)
+            ys.append(y)
 
         # -------------------------------------------------------
         # Construct the output logits via general self-attention.
