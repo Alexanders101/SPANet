@@ -7,30 +7,34 @@ import torch
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.profiler import PyTorchProfiler
 
 from spanet import JetReconstructionModel, Options
 
 
-def main(event_file: str,
-         training_file: str,
-         validation_file: str,
-         options_file: Optional[str],
-         checkpoint: Optional[str],
+def main(
+        event_file: str,
+        training_file: str,
+        validation_file: str,
+        options_file: Optional[str],
+        checkpoint: Optional[str],
 
-         log_dir: str,
-         name: str,
+        log_dir: str,
+        name: str,
 
-         fp16: bool,
-         graph: bool,
-         verbose: bool,
-         full_events: bool,
+        torch_script: bool,
+        fp16: bool,
+        graph: bool,
+        verbose: bool,
+        full_events: bool,
 
-         gpus: Optional[int],
-         epochs: Optional[int],
-         batch_size: Optional[int],
-         limit_dataset: Optional[int],
-         random_seed: int,
-         ):
+        profile: bool,
+        gpus: Optional[int],
+        epochs: Optional[int],
+        batch_size: Optional[int],
+        limit_dataset: Optional[int],
+        random_seed: int,
+):
 
     # Whether or not this script version is the master run or a worker
     master = True
@@ -93,7 +97,10 @@ def main(event_file: str,
     # -------------------------------------------------------------------------------------------------------
 
     # Create the initial model on the CPU
-    model = JetReconstructionModel(options)
+    model = JetReconstructionModel(options, torch_script)
+
+    # if torch_script:
+    #     model = torch.jit.script(model)
 
     # If we are using more than one gpu, then switch to DDP training
     # distributed_backend = 'dp' if options.num_gpu > 1 else None
@@ -112,9 +119,15 @@ def main(event_file: str,
 
     learning_rate_callback = LearningRateMonitor()
 
+    epochs = options.epochs
+    profiler = None
+    if profile:
+        epochs = 1
+        profiler = PyTorchProfiler(emit_nvtx=True)
+
     # Create the final pytorch-lightning manager
     trainer = pl.Trainer(logger=logger,
-                         max_epochs=options.epochs,
+                         max_epochs=epochs,
                          callbacks=[checkpoint_callback, learning_rate_callback],
                          resume_from_checkpoint=checkpoint,
                          strategy=distributed_backend,
@@ -122,7 +135,8 @@ def main(event_file: str,
                          track_grad_norm=2 if options.verbose_output else -1,
                          gradient_clip_val=options.gradient_clip,
                          weights_summary='full' if options.verbose_output else 'top',
-                         precision=16 if fp16 else 32)
+                         precision=16 if fp16 else 32,
+                         profiler=profiler)
 
     # Save the current hyperparameters to a json file in the checkpoint directory
     if master:
@@ -179,6 +193,12 @@ if __name__ == '__main__':
 
     parser.add_argument("-r", "--random_seed", type=int, default=0,
                         help="Set random seed for cross-validation.")
+
+    parser.add_argument("-ts", "--torch_script", action='store_true',
+                        help="Compile the neural network using torchscript.")
+
+    parser.add_argument("--profile", action='store_true',
+                        help="Profile network for a single training run.")
 
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override number of epochs to train for")
