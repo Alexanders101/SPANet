@@ -6,6 +6,7 @@ from torch import Tensor
 from torch.nn import functional as F
 
 from spanet.options import Options
+from spanet.dataset.regressions import regression_loss
 from spanet.dataset.jet_reconstruction_dataset import TBatch
 from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReconstructionNetwork
 from spanet.network.utilities.divergence_losses import assignment_cross_entropy_loss, jensen_shannon_divergence
@@ -133,10 +134,11 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         regression_terms = []
 
         for key in targets:
+            current_target_type = self.training_dataset.regression_types[key]
             current_prediction = predictions[key]
             current_target = targets[key]
 
-            current_loss = torch.mean((current_prediction - current_target) ** 2, dim=1)
+            current_loss = regression_loss(current_target_type)(current_prediction, current_target)
             current_loss = torch.nanmean(current_loss)
 
             with torch.no_grad():
@@ -148,8 +150,8 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             return total_loss
 
         else:
-            regression_loss = torch.stack(regression_terms).mean()
-            return total_loss + self.options.regression_loss_scale * regression_loss
+            total_regression_loss = torch.stack(regression_terms).mean()
+            return total_loss + self.options.regression_loss_scale * total_regression_loss
 
     def add_classification_loss(
             self,
@@ -163,14 +165,13 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             current_prediction = predictions[key]
             current_target = targets[key]
 
-            weight = None if not self.classification_weights else self.classification_weights[key]
+            weight = None if not self.balance_classifications else self.classification_weights[key]
             current_loss = F.cross_entropy(
                 current_prediction,
                 current_target,
                 ignore_index=-1,
                 weight=weight
             )
-
 
             classification_terms.append(current_loss)
 

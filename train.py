@@ -18,6 +18,8 @@ def main(
         validation_file: str,
         options_file: Optional[str],
         checkpoint: Optional[str],
+        state_dict: Optional[str],
+        freeze_state_dict: bool,
 
         log_dir: str,
         name: str,
@@ -99,6 +101,21 @@ def main(
     # Create the initial model on the CPU
     model = JetReconstructionModel(options, torch_script)
 
+    if state_dict is not None:
+        if master:
+            print(f"Loading state dict from: {state_dict}")
+        state_dict = torch.load(state_dict, map_location="cpu")["state_dict"]
+        missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+
+        if master:
+            print(f"Missing Keys: {missing_keys}")
+            print(f"Unexpected Keys: {unexpected_keys}")
+
+        if freeze_state_dict:
+            for pname, parameter in model.named_parameters():
+                if pname in state_dict:
+                    parameter.requires_grad_(False)
+
     # if torch_script:
     #     model = torch.jit.script(model)
 
@@ -166,6 +183,12 @@ if __name__ == '__main__':
 
     parser.add_argument("-cf", "--checkpoint", type=str, default=None,
                         help="Optional checkpoint to load from")
+
+    parser.add_argument("-sf", "--state_dict", type=str, default=None,
+                        help="Load from checkpoint but only the model weights.")
+
+    parser.add_argument("-fsf", "--freeze_state_dict", action='store_true',
+                        help="Freeze any weights that were loaded from the state dict.")
 
     parser.add_argument("-l", "--log_dir", type=str, default=None,
                         help="Output directory for the checkpoints and tensorboard logs. Default to current directory.")

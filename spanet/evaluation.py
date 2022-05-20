@@ -51,26 +51,25 @@ def load_model(log_directory: str,
 def predict_on_test_dataset(model: JetReconstructionModel, cuda: bool = False):
     full_masks = []
     full_targets = []
-    full_predictions = []
-    full_classifications = []
+    full_num_jets = []
+    full_detections = []
+    full_assignments = []
 
-    for source_data, *targets in tqdm(model.test_dataloader(), desc="Evaluating Model"):
-        if cuda:
-            source_data = [x.cuda() for x in source_data]
-
-        predictions, classifications = model.predict_assignments_and_detections(*source_data)
+    for batch in tqdm(model.test_dataloader(), desc="Evaluating Model"):
+        sources, num_jets, targets, regression_targets, classification_targets = batch
+        sources = tuple((x[0].to(model.device), x[1].to(model.device)) for x in sources)
+        assignments, detections = model.predict_assignments_and_detections(sources)
 
         full_targets.append([x[0].numpy() for x in targets])
         full_masks.append([x[1].numpy() for x in targets])
-        full_predictions.append([x for x in predictions])
-        full_classifications.append([x for x in classifications])
+        full_assignments.append([x for x in assignments])
+        full_detections.append([x for x in detections])
+        full_num_jets.append(num_jets)
 
+    full_num_jets = np.concatenate(full_num_jets)
     full_masks = np.concatenate(full_masks, axis=-1)
     full_targets = list(map(np.concatenate, zip(*full_targets)))
-    full_predictions = list(map(np.concatenate, zip(*full_predictions)))
-    full_classifications = list(map(np.concatenate, zip(*full_classifications)))
+    full_assignments = list(map(np.concatenate, zip(*full_assignments)))
+    full_detections = list(map(np.concatenate, zip(*full_detections)))
 
-    num_jets = model.testing_dataset.source_mask.sum(1).numpy()
-    num_jets = num_jets[:full_masks.shape[1]]
-
-    return full_predictions, full_classifications, full_targets, full_masks, num_jets
+    return full_assignments, full_detections, full_targets, full_masks, full_num_jets

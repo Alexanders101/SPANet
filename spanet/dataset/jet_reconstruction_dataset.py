@@ -9,7 +9,8 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 from spanet.dataset.event_info import EventInfo
-from spanet.dataset.inputs import create_source_input
+from spanet.dataset.inputs import create_source_input, InputType
+from spanet.dataset.regressions import regression_statistics
 
 # The possible types for the limit index parameter.
 TLimitIndex = Union[
@@ -97,9 +98,13 @@ class JetReconstructionDataset(Dataset):
         self.std = None
 
         with h5py.File(self.data_file, 'r') as file:
-            # Get the first sequential input to find the total number of events in the dataset.
-            first_group = [SpecialKey.Inputs, next(iter(file[SpecialKey.Inputs]))]
-            self.num_events = self.dataset(file, first_group, SpecialKey.Mask).shape[0]
+            # Get the first merged_momenta input to find the total number of events in the dataset.
+            first_key = [
+                name
+                for name, input_type in self.event_info.input_types.items()
+                if input_type == InputType.Sequential
+            ][0]
+            self.num_events = self.dataset(file, [SpecialKey.Inputs, first_key], SpecialKey.Mask).shape[0]
 
             # Adjust limit index into a standard format.
             limit_index = self.compute_limit_index(limit_index, randomization_seed)
@@ -112,7 +117,7 @@ class JetReconstructionDataset(Dataset):
 
             # Load various types of targets.
             self.assignments = self.load_assignments(file, limit_index)
-            self.regressions = self.load_regressions(file, limit_index)
+            self.regressions, self.regression_types = self.load_regressions(file, limit_index)
             self.classifications = self.load_classifications(file, limit_index)
 
             # Update size information after loading and limiting dataset.
@@ -265,14 +270,38 @@ class JetReconstructionDataset(Dataset):
             if value is not None
         )
 
-    def load_regressions(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Dict[str, Tensor]:
-        return self.load_tree_targets(
-            hdf5_file,
-            limit_index,
-            self.event_info.regressions,
-            SpecialKey.Regressions,
-            torch.float32
-        )
+    def load_regressions(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Tuple[Dict[str, Tensor], Dict[str, str]]:
+        ROOT = SpecialKey.Regressions
+        EVENT = SpecialKey.Event
+        PARTICLE = SpecialKey.Particle
+        TARGET_INFO = self.event_info.regressions
+        TYPE_INFO = self.event_info.regression_types
+
+        # Load all possible regressions in the event.
+        targets = OrderedDict()
+        types = OrderedDict()
+
+        for target, target_type in zip(TARGET_INFO[EVENT], TYPE_INFO[EVENT]):
+            target_key = "/".join((SpecialKey.Event, target))
+            target_data = self.dataset(hdf5_file, [ROOT, EVENT], target)
+            targets[target_key] = torch.from_numpy(target_data[:][limit_index])
+            types[target_key] = target_type
+
+        for particle in self.event_info.assignments:
+            for target, target_type in zip(TARGET_INFO[particle][PARTICLE], TYPE_INFO[particle][PARTICLE]):
+                target_key = "/".join((particle, PARTICLE, target))
+                target_data = self.dataset(hdf5_file, [ROOT, particle, PARTICLE], target)
+                targets[target_key] = torch.from_numpy(target_data[:][limit_index])
+                types[target_key] = target_type
+
+            for daughter in self.event_info.assignments[particle][0]:
+                for target, target_type in zip(TARGET_INFO[particle][daughter], TYPE_INFO[particle][daughter]):
+                    target_key = "/".join((particle, daughter, target))
+                    target_data = self.dataset(hdf5_file, [ROOT, particle, daughter], target)
+                    targets[target_key] = torch.from_numpy(target_data[:][limit_index])
+                    types[target_key] = target_type
+
+        return targets, types
 
     def load_classifications(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Dict[str, Tensor]:
         ROOT = SpecialKey.Classifications
@@ -340,17 +369,16 @@ class JetReconstructionDataset(Dataset):
         (Dict[str, Tensor], Dict[str, Tensor])
             The mean and standard deviation for existing regression values.
         """
-        regression_means = OrderedDict((
-            (key, value.nanmean(0, keepdim=True))
-            for key, value in self.regressions.items()
-            if value is not None
-        ))
+        regression_means = OrderedDict()
+        regression_stds = OrderedDict()
 
-        regression_stds = OrderedDict((
-            (key, torch.sqrt(value.square().nanmean(0, keepdim=True) - value.nanmean(0, keepdim=True).square()))
-            for key, value in self.regressions.items()
-            if value is not None
-        ))
+        for key, value in self.regressions.items():
+            if value is None:
+                continue
+
+            mean, std = regression_statistics(self.regression_types[key])(value)
+            regression_means[key] = mean
+            regression_stds[key] = std
 
         return regression_means, regression_stds
 

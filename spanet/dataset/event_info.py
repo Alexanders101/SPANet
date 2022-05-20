@@ -26,6 +26,45 @@ def key_with_default(database, key, default):
     return default if value is None else value
 
 
+def regression_names(regressions):
+    if isinstance(regressions, list):
+        return [
+            regression[0]
+            if isinstance(regression, list)
+            else regression
+
+            for regression in regressions
+        ]
+
+    return {
+        key: regression_names(value)
+        for key, value in regressions.items()
+    }
+
+
+def regression_types(regressions):
+    if isinstance(regressions, list):
+        return [
+            regression[1]
+            if isinstance(regression, list)
+            else "gaussian"
+
+            for regression in regressions
+        ]
+
+    return {
+        key: regression_types(value)
+        for key, value in regressions.items()
+    }
+
+
+def multiindex(dictionary, index):
+    result = dictionary
+    for key in index.split("/"):
+        result = result[key]
+    return result
+
+
 class EventInfo:
     class SpecialKey:
         Mask = "MASK"
@@ -72,7 +111,8 @@ class EventInfo:
             self.vector_mappings[target] = jet_mapping
             self.mapped_assignments[target] = (num_jets, mapped_permutations)
 
-        self.regressions = regressions
+        self.regressions = regression_names(regressions)
+        self.regression_types = regression_types(regressions)
         self.classifications = classifications
 
     def normalized_features(self, input_name):

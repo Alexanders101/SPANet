@@ -1,7 +1,9 @@
+from typing import Type
 from torch import Tensor, nn
 
 from spanet.options import Options
 from spanet.network.layers.branch_linear import BranchLinear
+from spanet.dataset.regressions import Regression, regression_class
 
 
 class NormalizedBranchLinear(nn.Module):
@@ -11,15 +13,17 @@ class NormalizedBranchLinear(nn.Module):
             self,
             options: Options,
             num_layers: int,
+            regression: Type[Regression],
             mean: Tensor,
             std: Tensor
     ):
         super(NormalizedBranchLinear, self).__init__()
 
         self.hidden_dim = options.hidden_dim
-        self.num_outputs = mean.shape[1]
+        self.num_outputs = 1
         self.num_layers = num_layers
 
+        self.regression = regression
         self.mean = nn.Parameter(mean, requires_grad=False)
         self.std = nn.Parameter(std, requires_grad=False)
         self.linear = BranchLinear(
@@ -41,4 +45,4 @@ class NormalizedBranchLinear(nn.Module):
         classification: [B, O]
             Probability of this particle existing in the data.
         """
-        return self.std * self.linear(vector) + self.mean
+        return self.regression.denormalize(self.linear(vector), self.mean, self.std)

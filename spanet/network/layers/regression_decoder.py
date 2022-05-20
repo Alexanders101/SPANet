@@ -4,6 +4,7 @@ from collections import OrderedDict
 from torch import Tensor, nn
 
 from spanet.options import Options
+from spanet.dataset.regressions import regression_class
 from spanet.network.layers.branch_linear import NormalizedBranchLinear
 from spanet.dataset.jet_reconstruction_dataset import JetReconstructionDataset
 
@@ -27,6 +28,7 @@ class RegressionDecoder(nn.Module):
             networks[name] = NormalizedBranchLinear(
                 options,
                 options.num_regression_layers,
+                regression_class(training_dataset.regression_types[name]),
                 means[name],
                 stds[name]
             )
@@ -39,6 +41,6 @@ class RegressionDecoder(nn.Module):
         # outputs: Dict with mapping name -> [B, O_name]
 
         return {
-            key: network(vectors[key])
+            key: network(vectors['/'.join(key.split('/')[:-1])]).view(-1)
             for key, network in self.networks.items()
         }

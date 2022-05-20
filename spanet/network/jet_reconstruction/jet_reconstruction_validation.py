@@ -123,8 +123,19 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         metrics.update(self.compute_metrics(jet_predictions, particle_scores, stacked_targets, stacked_masks))
 
         for key in regressions:
-            percent_error = np.abs((regressions[key] - regression_targets[key]) / regression_targets[key])
+            delta = regressions[key] - regression_targets[key]
+            
+            percent_error = np.abs(delta / regression_targets[key])
             self.log(f"REGRESSION/{key}_percent_error", percent_error.mean())
+
+            absolute_error = np.abs(delta)
+            self.log(f"REGRESSION/{key}_absolute_error", absolute_error.mean())
+
+            percent_deviation = delta / regression_targets[key]
+            self.logger.experiment.add_histogram(f"REGRESSION/{key}_percent_deviation", percent_deviation, self.global_step)
+
+            absolute_deviation = delta
+            self.logger.experiment.add_histogram(f"REGRESSION/{key}_absolute_deviation", absolute_deviation, self.global_step)
 
         for key in classifications:
             accuracy = (classifications[key] == classification_targets[key])
