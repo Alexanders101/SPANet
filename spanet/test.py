@@ -5,10 +5,11 @@ from collections import defaultdict
 from argparse import ArgumentParser
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from spanet import JetReconstructionModel
 from spanet.dataset.evaluator import SymmetricEvaluator, EventInfo
-from spanet.evaluation import evaluate_on_test_dataset, load_model
+from spanet.evaluation import evaluate_on_test_dataset, load_model, Evaluation
 
 
 def formatter(value: Any) -> str:
@@ -188,17 +189,16 @@ def display_table(results: Dict[str, Any], jet_limits: List[str], clusters: List
         print()
 
 
-def evaluate_model(model: JetReconstructionModel, lines: int):
-    evaluation = evaluate_on_test_dataset(model)
-    evaluator = SymmetricEvaluator(model.event_info)
+def evaluate_predictions(evaluation: Evaluation, num_vectors: ArrayLike, assignments: ArrayLike, event_info_file: str, lines: int):
+    event_info = EventInfo.read_from_ini(event_info_file)
+    evaluator = SymmetricEvaluator(event_info)
 
     # Flatten predictions
     predictions = list(evaluation.assignments.values())
-    num_vectors = model.testing_dataset.num_vectors.cpu().numpy()
 
     # Flatten targets and convert to numpy
-    targets = [assignment[0].cpu().numpy() for assignment in model.testing_dataset.assignments.values()]
-    masks = [assignment[1].cpu().numpy() for assignment in model.testing_dataset.assignments.values()]
+    targets = [assignment[0].cpu().numpy() for assignment in assignments]
+    masks = [assignment[1].cpu().numpy() for assignment in assignments]
 
     minimum_jet_count = num_vectors.min()
     jet_limits = [f"== {minimum_jet_count + i}" for i in range(lines)]
@@ -233,7 +233,8 @@ def main(
     latex: bool
 ):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
-    results, jet_limits, clusters = evaluate_model(model, lines)
+    evaluation = evaluate_on_test_dataset(model, gpu)
+    results, jet_limits, clusters = evaluate_predictions(evaluation, model.testing_dataset.num_vectors.cpu().numpy(), model.testing_dataset.assignments.values(), model.options.event_info_file, lines)
     if latex:
         display_latex_table(results, jet_limits, clusters)
     else:

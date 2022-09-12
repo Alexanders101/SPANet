@@ -102,6 +102,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # Squash the permutation losses into a single value.
         return self.combine_symmetric_losses(symmetric_losses)
 
+
     def symmetric_divergence_loss(self, predictions: List[Tensor], masks: Tensor) -> Tensor:
         divergence_loss = []
 
