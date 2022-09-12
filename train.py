@@ -6,7 +6,7 @@ import json
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
 
 from spanet import JetReconstructionModel, Options
 
@@ -96,8 +96,8 @@ def main(event_file: str,
     model = JetReconstructionModel(options)
 
     # If we are using more than one gpu, then switch to DDP training
-    distributed_backend = 'dp' if options.num_gpu > 1 else None
-    # distributed_backend = 'ddp' if options.num_gpu > 1 else None
+    strategy = 'dp' if options.num_gpu > 1 else None
+    # strategy = 'ddp' if options.num_gpu > 1 else None
 
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
     log_dir = getcwd() if log_dir is None else log_dir
@@ -112,16 +112,17 @@ def main(event_file: str,
 
     learning_rate_callback = LearningRateMonitor()
 
+    model_summary = ModelSummary(max_depth=10 if options.verbose_output else 1)
+
     # Create the final pytorch-lightning manager
     trainer = pl.Trainer(logger=logger,
                          max_epochs=options.epochs,
-                         callbacks=[checkpoint_callback, learning_rate_callback],
+                         callbacks=[checkpoint_callback, learning_rate_callback, model_summary],
                          resume_from_checkpoint=checkpoint,
-                         distributed_backend=distributed_backend,
+                         strategy=strategy,
                          gpus=options.num_gpu if options.num_gpu > 0 else None,
                          track_grad_norm=2 if options.verbose_output else -1,
                          gradient_clip_val=options.gradient_clip,
-                         weights_summary='full' if options.verbose_output else 'top',
                          precision=16 if fp16 else 32)
 
     # Save the current hyperparameters to a json file in the checkpoint directory
