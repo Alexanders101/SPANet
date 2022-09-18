@@ -31,14 +31,15 @@ class JetReconstructionTraining(JetReconstructionNetwork):
                        for prediction, decoder in zip(predictions, self.decoders)]
 
         # Convert the targets into a numpy array of tensors so we can use fancy indexing from numpy
-        targets = np.array(targets, dtype='O')
+        targets_cpu = [[t.cpu() for t in target] for target in targets]
+        targets = np.array(targets_cpu, dtype='O')
 
         # Compute the loss on every valid permutation of the targets
         # TODO think of a way to avoid this memory transfer but keep permutation indices synced with checkpoint
         losses = []
         for permutation in self.event_permutation_tensor.cpu().numpy():
-            loss = tuple(jet_cross_entropy_loss(P, T, M, self.options.focal_gamma) +
-                         self.particle_classification_loss(C, M)
+            loss = tuple(jet_cross_entropy_loss(P, T.to(P.device), M.to(P.device), self.options.focal_gamma) +
+                         self.particle_classification_loss(C, M.to(P.device))
                          for P, C, (T, M)
                          in zip(predictions, classifications, targets[permutation]))
 
