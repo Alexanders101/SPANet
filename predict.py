@@ -16,9 +16,9 @@ def create_hdf5_output(output_file: str,
     with h5py.File(output_file, 'w') as output:
         output.create_dataset(f"source/mask", data=dataset.source_mask)
         for i, (feature_name, _, _) in enumerate(dataset.event_info.input_features):
-            output.create_dataset(f"source/{feature_name}", data=dataset.source_data[:, :, i])
+            output.create_dataset(f"source/{feature_name}", data=dataset.sources[:, :, i])
 
-        for i, (particle_name, (jets, _)) in enumerate(dataset.event_info.targets.items()):
+        for i, (particle_name, (jets, _)) in enumerate(dataset.event_info.assignments.items()):
             output.create_dataset(f"{particle_name}/mask", data=full_classifications[i])
             for k, jet_name in enumerate(jets):
                 output.create_dataset(f"{particle_name}/{jet_name}", data=full_predictions[i][:, k])

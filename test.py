@@ -107,7 +107,7 @@ def create_table(table: dict, full_row: bool = False, event_type: str = None) ->
 def evaluate_model(model: JetReconstructionModel, cuda: bool = False):
     predictions, _, targets, masks, num_jets = predict_on_test_dataset(model, cuda)
 
-    event_info = EventInfo.read_from_ini(model.options.event_info_file)
+    event_info = EventInfo.read_from_yaml(model.options.event_info_file)
     evaluator = SymmetricEvaluator(event_info)
 
     minimum_jet_count = num_jets.min()
