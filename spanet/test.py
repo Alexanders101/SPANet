@@ -5,6 +5,7 @@ from collections import defaultdict
 from argparse import ArgumentParser
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from spanet import JetReconstructionModel
 from spanet.dataset.evaluator import SymmetricEvaluator, EventInfo
@@ -104,10 +105,8 @@ def create_table(table: dict, full_row: bool = False, event_type: str = None) ->
     stdout.flush()
 
 
-def evaluate_model(model: JetReconstructionModel, cuda: bool = False):
-    predictions, _, targets, masks, num_jets = predict_on_test_dataset(model, cuda)
-
-    event_info = EventInfo.read_from_ini(model.options.event_info_file)
+def evaluate_predictions(predictions: List[ArrayLike], targets: List[ArrayLike], masks: ArrayLike, num_jets: ArrayLike, event_info_file: str):
+    event_info = EventInfo.read_from_ini(event_info_file)
     evaluator = SymmetricEvaluator(event_info)
 
     minimum_jet_count = num_jets.min()
@@ -160,7 +159,8 @@ def main(log_directory: str,
          batch_size: Optional[int],
          gpu: bool):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
-    results, jet_limits = evaluate_model(model, gpu)
+    predictions, _, targets, masks, num_jets = predict_on_test_dataset(model, gpu)
+    results, jet_limits = evaluate_predictions(predictions, targets, masks, num_jets, model.options.event_info_file)
     display_table(results, jet_limits)
 
 
