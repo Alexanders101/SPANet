@@ -5,6 +5,7 @@ import torch
 from torch import Tensor, nn, jit
 
 from spanet.options import Options
+from spanet.dataset.types import Symmetries
 from spanet.network.utilities import masked_log_softmax
 from spanet.network.layers.stacked_encoder import StackedEncoder
 from spanet.network.layers.branch_linear import BranchLinear
@@ -16,18 +17,19 @@ class BranchDecoder(nn.Module):
     WEIGHTS_INDEX_NAMES = "ijklmn"
     DEFAULT_JET_COUNT = 16
 
-    def __init__(self,
-                 options: Options,
-                 name: str,
-                 daughter_names: List[str],
-                 order: int,
-                 permutation_indices: List[Tuple[int, ...]],
-                 softmax_output: bool = True):
+    def __init__(
+        self,
+        options: Options,
+        particle_name: str,
+        product_names: List[str],
+        product_symmetries: Symmetries,
+        softmax_output: bool = True
+    ):
         super(BranchDecoder, self).__init__()
 
-        self.name = name
-        self.order = order
-        self.daughter_names = daughter_names
+        self.degree = product_symmetries.degree
+        self.particle_name = particle_name
+        self.product_names = product_names
         self.softmax_output = softmax_output
         self.combinatorial_scale = options.combinatorial_scale
 
@@ -40,7 +42,7 @@ class BranchDecoder(nn.Module):
 
         # Symmetric attention to create the output distribution
         attention_layer = SymmetricAttentionSplit if options.split_symmetric_attention else SymmetricAttentionFull
-        self.attention = attention_layer(options, order, permutation_indices)
+        self.attention = attention_layer(options, self.degree, product_symmetries.permutations)
 
         # Optional output predicting if the particle was present or not
         self.detection_classifier = BranchLinear(options, options.num_detector_layers)
@@ -53,13 +55,13 @@ class BranchDecoder(nn.Module):
         self.diagonal_masks = {}
 
     def create_padding_mask_operation(self, batch_size: int):
-        weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.order]
+        weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.degree]
         operands = ','.join(map(lambda x: 'b' + x, weights_index_names))
         expression = f"{operands}->b{weights_index_names}"
         return expression
 
     def create_diagonal_mask_operation(self):
-        weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.order]
+        weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.degree]
         operands = ','.join(map(lambda x: 'b' + x, weights_index_names))
         expression = f"{operands}->{weights_index_names}"
         return expression
@@ -73,7 +75,7 @@ class BranchDecoder(nn.Module):
         # =========================================================================================
         # Padding mask
         # =========================================================================================
-        padding_mask_operands = [batch_sequence_mask.squeeze() * 1] * self.order
+        padding_mask_operands = [batch_sequence_mask.squeeze() * 1] * self.degree
         padding_mask = torch.einsum(self.padding_mask_operation, *padding_mask_operands)
 
         # =========================================================================================
@@ -85,9 +87,9 @@ class BranchDecoder(nn.Module):
             identity = 1 - torch.eye(num_jets)
             identity = identity.type_as(output)
 
-            diagonal_mask_operands = [identity * 1] * self.order
+            diagonal_mask_operands = [identity * 1] * self.degree
             diagonal_mask = torch.einsum(self.diagonal_mask_operation, *diagonal_mask_operands)
-            diagonal_mask = diagonal_mask.unsqueeze(0) < (num_jets + 1 - self.order)
+            diagonal_mask = diagonal_mask.unsqueeze(0) < (num_jets + 1 - self.degree)
             self.diagonal_masks[(num_jets, output.device)] = diagonal_mask
 
         return (padding_mask * diagonal_mask).bool()

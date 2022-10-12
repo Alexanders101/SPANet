@@ -1,7 +1,7 @@
-from typing import List, Tuple, Mapping, Iterable, Dict, Union
 from configparser import ConfigParser
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 from itertools import chain, permutations
+from functools import cache
 
 from yaml import load as yaml_load
 
@@ -11,7 +11,12 @@ except ImportError:
     from yaml import Loader, Dumper
 import numpy as np
 
+from spanet.dataset.types import *
 from spanet.network.utilities.group_theory import power_set, complete_symbolic_symmetry_group, complete_symmetry_group
+
+
+def cached_property(func):
+    return property(cache(func))
 
 
 def with_default(value, default):
@@ -26,147 +31,108 @@ def key_with_default(database, key, default):
     return default if value is None else value
 
 
-def regression_names(regressions):
-    if isinstance(regressions, list):
-        return [
-            regression[0]
-            if isinstance(regression, list)
-            else regression
-
-            for regression in regressions
-        ]
-
-    return {
-        key: regression_names(value)
-        for key, value in regressions.items()
-    }
-
-
-def regression_types(regressions):
-    if isinstance(regressions, list):
-        return [
-            regression[1]
-            if isinstance(regression, list)
-            else "gaussian"
-
-            for regression in regressions
-        ]
-
-    return {
-        key: regression_types(value)
-        for key, value in regressions.items()
-    }
-
-
-def multiindex(dictionary, index):
-    result = dictionary
-    for key in index.split("/"):
-        result = result[key]
-    return result
-
-
 class EventInfo:
-    class SpecialKey:
-        Mask = "MASK"
-        Event = "EVENT"
-        Inputs = "INPUTS"
-        Targets = "TARGETS"
-        Particle = "PARTICLE"
-        Regressions = "REGRESSIONS"
-        Permutations = "PERMUTATIONS"
-        Classifications = "CLASSIFICATIONS"
+    def __init__(
+        self,
 
-    Feature = namedtuple("Feature", ["name", "normalize", "log_scale"])
+        # Information about observable inputs for this event.
+        input_types: InputDict[str, InputType],
+        input_features: InputDict[str, Tuple[FeatureInfo, ...]],
 
-    def __init__(self,
-                 input_types: Dict[str, str],
-                 input_features: Dict[str, List[Tuple[str, bool, bool]]],
-                 event_particles: Tuple[str, ...],
-                 event_permutations: Union[str, List[Tuple[str, ...]]],
-                 particles: Dict[str, Tuple[Tuple[str, ...], Union[str, List[Tuple[str, ...]]]]],
-                 regressions: Dict[str, Union[List[str], Dict[str, List[str]]]],
-                 classifications: Dict[str, Union[List[str], Dict[str, List[str]]]]):
+        # Information about the target structure for this event.
+        event_particles: Particles,
+        product_particles: EventDict[str, Particles],
+
+        # Information about auxiliary values attached to this event.
+        regressions: FeynmanDict[str, List[RegressionInfo]],
+        classifications: FeynmanDict[str, List[ClassificationInfo]]
+    ):
 
         self.input_types = input_types
-        self.input_names = list(input_types)
+        self.input_names = list(input_types.keys())
         self.input_features = input_features
 
         self.event_particles = event_particles
-        self.event_permutations = event_permutations
-
-        self.assignments = particles
-        self.assignment_mapping = self.variable_mapping(self.assignments)
-        self.event_symmetries = (
+        self.event_mapping = self.construct_mapping(self.event_particles)
+        self.event_symmetries = Symmetries(
             len(self.event_particles),
-            self.apply_mapping(self.event_permutations, self.assignment_mapping)
+            self.apply_mapping(self.event_particles.permutations, self.event_mapping)
         )
 
-        self.vector_mappings = OrderedDict()
-        self.mapped_assignments = OrderedDict()
-        for target, (jets, jet_permutations) in self.assignments.items():
-            num_jets = len(jets)
-            jet_mapping = self.variable_mapping(jets)
-            mapped_permutations = self.apply_mapping(jet_permutations, jet_mapping)
+        self.product_particles = product_particles
+        self.product_mappings: ODict[str, ODict[str, int]] = OrderedDict()
+        self.product_symmetries: ODict[str, Symmetries] = OrderedDict()
 
-            self.vector_mappings[target] = jet_mapping
-            self.mapped_assignments[target] = (num_jets, mapped_permutations)
+        for event_particle, product_particles in self.product_particles.items():
+            product_mapping = self.construct_mapping(product_particles)
 
-        self.regressions = regression_names(regressions)
-        self.regression_types = regression_types(regressions)
+            self.product_mappings[event_particle] = product_mapping
+            self.product_symmetries[event_particle] = Symmetries(
+                len(product_particles),
+                self.apply_mapping(product_particles.permutations, product_mapping)
+            )
+
+        self.regressions = regressions
         self.classifications = classifications
 
-    def normalized_features(self, input_name):
-        return np.array([feature[1] for feature in self.input_features[input_name]])
+    def normalized_features(self, input_name: str) -> NDArray[bool]:
+        return np.array([feature.normalize for feature in self.input_features[input_name]])
 
-    def log_features(self, input_name):
-        return np.array([feature[2] for feature in self.input_features[input_name]])
+    def log_features(self, input_name: str) -> NDArray[bool]:
+        return np.array([feature.log_scale for feature in self.input_features[input_name]])
 
-    @property
-    def event_equivalence_classes(self):
+    @cached_property
+    def event_symbolic_group(self) -> SymbolicPermutationGroup:
+        return complete_symbolic_symmetry_group(*self.event_symmetries)
+
+    @cached_property
+    def event_permutation_group(self) -> PermutationGroup:
+        return complete_symmetry_group(*self.event_symmetries)
+
+    @cached_property
+    def ordered_event_transpositions(self) -> Set[List[int]]:
+        return set(chain.from_iterable(map(
+            lambda x: permutations(x, r=2),
+            self.event_symmetries.permutations
+        )))
+
+    @cached_property
+    def event_transpositions(self) -> Set[Tuple[int, int]]:
+        return set(map(tuple, map(sorted, self.ordered_event_transpositions)))
+
+    @cached_property
+    def event_equivalence_classes(self) -> Set[FrozenSet[FrozenSet[int]]]:
         num_particles = self.event_symmetries[0]
         group = self.event_symbolic_group
         sets = map(frozenset, power_set(range(num_particles)))
         return set(frozenset(frozenset(g(x) for x in s) for g in group.elements) for s in sets)
 
-    @property
-    def event_symbolic_group(self):
-        return complete_symbolic_symmetry_group(*self.event_symmetries)
-
-    @property
-    def event_permutation_group(self):
-        return complete_symmetry_group(*self.event_symmetries)
-
-    @property
-    def event_transpositions(self):
-        event_particles, event_permutations = self.event_symmetries
-        return set(chain.from_iterable(map(lambda x: permutations(x, r=2), event_permutations)))
-
-    @property
-    def assignment_permutation_groups(self):
+    @cached_property
+    def product_permutation_groups(self) -> ODict[str, PermutationGroup]:
         output = []
 
-        for name, (order, symmetries) in self.mapped_assignments.items():
+        for name, (order, symmetries) in self.product_symmetries.items():
             symmetries = [] if symmetries is None else symmetries
             permutation_group = complete_symmetry_group(order, symmetries)
             output.append((name, permutation_group))
 
         return OrderedDict(output)
 
-    @property
-    def assignment_symbolic_groups(self):
+    @cached_property
+    def product_symbolic_groups(self) -> ODict[str, SymbolicPermutationGroup]:
         output = []
 
-        for name, (order, symmetries) in self.mapped_assignments.items():
+        for name, (order, symmetries) in self.product_symmetries.items():
             symmetries = [] if symmetries is None else symmetries
             permutation_group = complete_symbolic_symmetry_group(order, symmetries)
             output.append((name, permutation_group))
 
         return OrderedDict(output)
 
-    def num_features(self, input_name: str):
+    def num_features(self, input_name: str) -> int:
         return len(self.input_features[input_name])
 
-    def input_type(self, input_name: str):
+    def input_type(self, input_name: str) -> InputType:
         return self.input_types[input_name].upper()
 
     @staticmethod
@@ -174,12 +140,11 @@ class EventInfo:
         return tuple(map(str.strip, list_string.strip("][").strip(")(").split(",")))
 
     @staticmethod
-    def variable_mapping(variables: Iterable) -> Dict[str, int]:
-        # noinspection PyTypeChecker
+    def construct_mapping(variables: Iterable[str]) -> ODict[str, int]:
         return OrderedDict(map(reversed, enumerate(variables)))
 
     @staticmethod
-    def apply_mapping(permutations: Union[str, List[Tuple[str, ...]]], mapping: Dict[str, int]):
+    def apply_mapping(permutations: Union[str, Permutations], mapping: Dict[str, int]) -> MappedPermutations:
         # Old style which parses a raw string UNSAFE!
         if isinstance(permutations, str):
             return eval(permutations, mapping)
@@ -239,77 +204,63 @@ class EventInfo:
         input_types = OrderedDict()
         input_features = OrderedDict()
 
-        for input_type in config[cls.SpecialKey.Inputs]:
-            current_inputs = with_default(config[cls.SpecialKey.Inputs][input_type], default={})
+        for input_type in config[SpecialKey.Inputs]:
+            current_inputs = with_default(config[SpecialKey.Inputs][input_type], default={})
 
             for input_name, input_information in current_inputs.items():
                 input_types[input_name] = input_type.upper()
-                input_features[input_name] = [
-                    cls.Feature(
-                        name,
-                        "normalize" in normalize.lower() or "true" in normalize.lower(),
-                        "log" in normalize.lower()
+                input_features[input_name] = tuple(
+                    FeatureInfo(
+                        name=name,
+                        normalize=("normalize" in normalize.lower()) or ("true" in normalize.lower()),
+                        log_scale="log" in normalize.lower()
                     )
 
                     for name, normalize in input_information.items()
-                ]
+                )
 
         # Extract event and permutation information.
         # ------------------------------------------
-        event_particles = tuple(config[cls.SpecialKey.Event].keys())
-        permutation_config = key_with_default(config, cls.SpecialKey.Permutations, default={})
-        event_permutations = key_with_default(permutation_config, cls.SpecialKey.Event, default=[])
+        permutation_config = key_with_default(config, SpecialKey.Permutations, default={})
+
+        event_names = tuple(config[SpecialKey.Event].keys())
+        event_permutations = key_with_default(permutation_config, SpecialKey.Event, default=[])
         event_permutations = list(map(tuple, event_permutations))
+        event_particles = Particles(event_names, event_permutations)
 
-        daughter_particles = OrderedDict()
+        product_particles = OrderedDict()
         for event_particle in event_particles:
-            particle_jets = config[cls.SpecialKey.Event][event_particle]
+            product_names = config[SpecialKey.Event][event_particle]
 
-            particle_permutations = key_with_default(permutation_config, event_particle, default=[])
-            particle_permutations = list(map(tuple, particle_permutations))
+            product_permutations = key_with_default(permutation_config, event_particle, default=[])
+            product_permutations = list(map(tuple, product_permutations))
 
-            daughter_particles[event_particle] = (particle_jets, particle_permutations)
+            product_particles[event_particle] = Particles(product_names, product_permutations)
 
         # Extract Regression Information.
         # -------------------------------
-        regressions = key_with_default(config, cls.SpecialKey.Regressions, default={})
-        if cls.SpecialKey.Event not in regressions:
-            regressions[cls.SpecialKey.Event] = []
+        regressions = key_with_default(config, SpecialKey.Regressions, default={})
+        regressions = feynman_fill(regressions, event_particles, product_particles, constructor=list)
 
-        for particle in event_particles:
-            if particle not in regressions:
-                regressions[particle] = {}
-
-            if cls.SpecialKey.Particle not in regressions[particle]:
-                regressions[particle][cls.SpecialKey.Particle] = []
-
-            for daughter in daughter_particles[particle][0]:
-                if daughter not in regressions[particle]:
-                    regressions[particle][daughter] = []
+        # Fill in any default parameters for regressions such as gaussian type.
+        regressions = feynman_map(
+            lambda raw_regressions: [
+                RegressionInfo(*(regression if isinstance(regression, list) else [regression]))
+                for regression in raw_regressions
+            ],
+            regressions
+        )
 
         # Extract Classification Information.
         # -----------------------------------
-        classifications = key_with_default(config, cls.SpecialKey.Classifications, default={})
-        if cls.SpecialKey.Event not in classifications:
-            classifications[cls.SpecialKey.Event] = []
-
-        for particle in event_particles:
-            if particle not in classifications:
-                classifications[particle] = {}
-
-            if cls.SpecialKey.Particle not in classifications[particle]:
-                classifications[particle][cls.SpecialKey.Particle] = []
-
-            for daughter in daughter_particles[particle][0]:
-                if daughter not in classifications[particle]:
-                    classifications[particle][daughter] = []
+        classifications = key_with_default(config, SpecialKey.Classifications, default={})
+        classifications = feynman_fill(classifications, event_particles, product_particles, constructor=list)
 
         return cls(
             input_types,
             input_features,
             event_particles,
-            event_permutations,
-            daughter_particles,
+            product_particles,
             regressions,
             classifications
         )

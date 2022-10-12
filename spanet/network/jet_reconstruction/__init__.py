@@ -3,6 +3,6 @@ from spanet.network.jet_reconstruction.jet_reconstruction_validation import JetR
 from spanet.network.jet_reconstruction.jet_reconstruction_optimization import JetReconstructionOptimization
 
 
-# class JetReconstructionModel(JetReconstructionTraining, JetReconstructionValidation, JetReconstructionOptimization):
-class JetReconstructionModel(JetReconstructionTraining, JetReconstructionValidation):
+# class JetReconstructionModel(JetReconstructionOptimization, JetReconstructionValidation, JetReconstructionTraining):
+class JetReconstructionModel(JetReconstructionValidation, JetReconstructionTraining):
     pass

@@ -1,8 +1,7 @@
 import torch
 from torch import Tensor
-from typing import Tuple
 
-from spanet.dataset.regressions.base_regression import Regression
+from spanet.dataset.regressions.base_regression import Regression, Statistics
 
 
 class GaussianRegression(Regression):
@@ -11,12 +10,12 @@ class GaussianRegression(Regression):
         return "gaussian"
 
     @staticmethod
-    def statistics(data: Tensor) -> Tuple[Tensor, Tensor]:
+    def statistics(data: Tensor) -> Statistics:
         mean = torch.nanmean(data)
         std = torch.sqrt(torch.nanmean(torch.square(data)) - torch.square(mean))
 
-        return mean, std
+        return Statistics(mean, std)
 
     @staticmethod
-    def loss(predictions: Tensor, targets: Tensor) -> Tensor:
-        return torch.square(predictions - targets)
+    def loss(predictions: Tensor, targets: Tensor, mean: Tensor, std: Tensor) -> Tensor:
+        return torch.square((predictions - targets) / std)

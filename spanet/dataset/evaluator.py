@@ -11,7 +11,7 @@ class SymmetricEvaluator:
     def __init__(self, event_info: EventInfo):
         self.event_info = event_info
         self.event_group = event_info.event_symbolic_group
-        self.target_groups = event_info.assignment_symbolic_groups
+        self.target_groups = event_info.product_symbolic_groups
 
         # Gather all of the Similar particles together based on the permutation groups
         clusters = []
@@ -21,7 +21,9 @@ class SymmetricEvaluator:
             orbit = tuple(sorted(orbit))
             names = [event_info.event_particles[i] for i in orbit]
 
-            cluster_name = ''.join(reduce(set.intersection, map(set, names)))
+            cluster_name = map(dict.fromkeys, names)
+            cluster_name = map(lambda x: x.keys(), cluster_name)
+            cluster_name = ''.join(reduce(lambda x, y: x & y, cluster_name))
             clusters.append((cluster_name, names, orbit))
 
             cluster_group = self.target_groups[names[0]]

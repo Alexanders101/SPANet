@@ -126,10 +126,10 @@ class JetReconstructionValidation(JetReconstructionNetwork):
             delta = regressions[key] - regression_targets[key]
             
             percent_error = np.abs(delta / regression_targets[key])
-            self.log(f"REGRESSION/{key}_percent_error", percent_error.mean())
+            self.log(f"REGRESSION/{key}_percent_error", percent_error.mean(), sync_dist=True)
 
             absolute_error = np.abs(delta)
-            self.log(f"REGRESSION/{key}_absolute_error", absolute_error.mean())
+            self.log(f"REGRESSION/{key}_absolute_error", absolute_error.mean(), sync_dist=True)
 
             percent_deviation = delta / regression_targets[key]
             self.logger.experiment.add_histogram(f"REGRESSION/{key}_percent_deviation", percent_deviation, self.global_step)
@@ -139,11 +139,11 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         for key in classifications:
             accuracy = (classifications[key] == classification_targets[key])
-            self.log(f"CLASSIFICATION/{key}_accuracy", accuracy.mean())
+            self.log(f"CLASSIFICATION/{key}_accuracy", accuracy.mean(), sync_dist=True)
 
         for name, value in metrics.items():
             if not np.isnan(value):
-                self.log(name, value)
+                self.log(name, value, sync_dist=True)
 
         return metrics
 

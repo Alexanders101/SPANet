@@ -1,3 +1,4 @@
+import functools
 from typing import Union, Tuple, List, Optional, Dict
 from collections import OrderedDict
 
@@ -8,8 +9,10 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
+from spanet.dataset.types import SpecialKey, NDArray, Batch, AssignmentTargets, Source, ArrayLike
 from spanet.dataset.event_info import EventInfo
-from spanet.dataset.inputs import create_source_input, InputType
+from spanet.dataset.inputs import create_source_input
+from spanet.dataset.types import InputType
 from spanet.dataset.regressions import regression_statistics
 
 # The possible types for the limit index parameter.
@@ -30,9 +33,6 @@ TBatch = Tuple[
     Dict[str, Tensor]
 ]
 
-# Special Keys used to describe event information.
-SpecialKey = EventInfo.SpecialKey
-
 
 class JetReconstructionDataset(Dataset):
     def __init__(
@@ -41,7 +41,7 @@ class JetReconstructionDataset(Dataset):
         event_info: Union[str, EventInfo],
         limit_index: TLimitIndex = 1.0,
         randomization_seed: int = 0,
-        jet_limit: int = 0,
+        vector_limit: int = 0,
         partial_events: bool = True
     ):
         """ A container class for reading in jet reconstruction datasets.
@@ -51,31 +51,20 @@ class JetReconstructionDataset(Dataset):
         data_file : str
             HDF5 file containing the jet event data, see Notes section for structure information.
         event_info : str or EventInfo
-            An EventInfo object which contains the symmetries for the event. Or the path of the ini file where the
-            event info is defined. See feynman.dataset.EventInfo.
+            An EventInfo object which contains the symmetries for the event.
+            Or the path of the yaml file where the event info is defined.
+            See `feynman.dataset.EventInfo`
         limit_index : float in [-1, 1], tuple of floats, or array-like.
             If a positive float - limit the dataset to the first limit_index percent of the data.
             If a negative float - limit the dataset to the last |limit_index| percent of the data.
             If a tuple - limit the dataset to [limit_index[0], limit_index[1]] percent of the data.
             If array-like or tensor - limit the dataset to the specified indices.
         randomization_seed: int
-            If set to a value greater than 0, randomize the order of the dataset before limiting to index.
-        jet_limit: int
+            If set to a value greater than 0, randomize the order of the dataset. Applied before limit index.
+        vector_limit: int
             Limit the event to a specific number of vectors.
         partial_events : bool
-            Whether to allow training on partial events as well as complete events.
-
-        Notes
-        -----
-        Data file structure:
-        source/FEATURE_NAME - (num_events, num_jets, ) - The padded jet data for the event.
-        source/mask - (num_events, num_jets) - boolean value if a given jet is in the event or a padding jet.
-
-        For each target in your event:
-        TARGET_NAME/JET_NAME - (num_events, ) - Indices indicating which of the source jets are the labels sub-jets.
-        TARGET_NAME/mask - (num_events, ) - Boolean value if the given target is present in the event at all.
-
-        TARGET_NAMES must match the targets defined in the event_info.
+            Whether to allow training on partial events, not just complete events.
         """
         super(JetReconstructionDataset, self).__init__()
 
@@ -87,12 +76,6 @@ class JetReconstructionDataset(Dataset):
                 self.event_info = EventInfo.read_from_ini(event_info)
             else:
                 self.event_info = EventInfo.read_from_yaml(event_info)
-
-        self.assignment_symmetries = self.event_info.mapped_assignments.items()
-        self.source_normalization = self.event_info.input_features
-        self.event_transpositions = self.event_info.event_transpositions
-        self.event_permutation_group = self.event_info.event_permutation_group
-        self.unordered_event_transpositions = set(map(tuple, map(sorted, self.event_transpositions)))
 
         self.mean = None
         self.std = None
@@ -132,8 +115,8 @@ class JetReconstructionDataset(Dataset):
             print(f"Training on Full Events only.")
 
         # Optionally limit the dataset to a specific number of jets.
-        if jet_limit > 0:
-            self.limit_dataset_to_jet_count(jet_limit)
+        if vector_limit > 0:
+            self.limit_dataset_to_jet_count(vector_limit)
 
     @staticmethod
     def dataset(hdf5_file: h5py.File, group: List[str], key: str) -> h5py.Dataset:
@@ -144,7 +127,7 @@ class JetReconstructionDataset(Dataset):
         else:
             raise KeyError(f"{key} not found in group {group_string}")
 
-    def compute_limit_index(self, limit_index: TLimitIndex, randomization_seed: int) -> np.ndarray:
+    def compute_limit_index(self, limit_index: TLimitIndex, randomization_seed: int) -> NDArray[np.int64]:
         """ Take subsection of the data for training / validation
 
         Parameters
@@ -202,130 +185,70 @@ class JetReconstructionDataset(Dataset):
             A dictionary mapping the target name to the target indices and mask.
         """
         targets = OrderedDict()
-        for target, (jets, _) in self.event_info.assignments.items():
-            target_data = torch.empty(len(jets), self.num_events, dtype=torch.int64)
+        for event_particle, daughter_particles in self.event_info.product_particles.items():
+            target_data = torch.empty(len(daughter_particles), self.num_events, dtype=torch.int64)
 
-            for index, jet in enumerate(jets):
-                self.dataset(hdf5_file, [SpecialKey.Targets, target], jet).read_direct(target_data[index].numpy())
+            for index, daughter in enumerate(daughter_particles):
+                dataset = self.dataset(hdf5_file, [SpecialKey.Targets, event_particle], daughter)
+                dataset.read_direct(target_data[index].numpy())
 
             target_data = target_data.transpose(0, 1)
             target_data = target_data[limit_index]
 
             target_mask = (target_data >= 0).all(1)
 
-            targets[target] = (target_data, target_mask)
+            targets[event_particle] = (target_data, target_mask)
 
         return targets
 
-    def load_tree_targets(
-            self,
-            hdf5_file: h5py.File,
-            limit_index: np.ndarray,
-            tree_structure: Dict[str, Union[List[str], Dict[str, List[str]]]],
-            root_key: str,
-            data_type: torch.dtype
-    ) -> Dict[str, Tensor]:
-        """
-        Load target data which is stored in the form of an event-particle-daughter tree.
-        Used for both classification and regression targets.
-        Perhaps more in the future.
-
-        Returns
-        -------
-        OrderedDict: str -> (Tensor, Tensor)
-            A dictionary mapping the target name to the target indices and mask.
-        """
-
-        # Helper function for loading in a particular set of targets.
-        # Returns None if no regression is defined.
-        def load_target(group: List[str]) -> Optional[Tensor]:
-            target_info = tree_structure
-            for key in group:
-                target_info = target_info[key]
-
-            if len(target_info) == 0:
-                return None
-
-            target_data = torch.empty(len(target_info), self.num_events, dtype=data_type)
-
-            for index, key in enumerate(target_info):
-                current_dataset = self.dataset(hdf5_file, [root_key, *group], key)
-                current_dataset.read_direct(target_data[index].numpy())
-
-            return target_data.transpose(0, 1)[limit_index]
-
-        # Load all possible regressions in the event.
-        targets = OrderedDict()
-        targets[SpecialKey.Event] = load_target([SpecialKey.Event])
-        for particle in self.event_info.assignments:
-            targets["/".join((particle, SpecialKey.Particle))] = load_target([particle, SpecialKey.Particle])
-
-            for daughter in self.event_info.assignments[particle][0]:
-                targets["/".join((particle, daughter))] = load_target([particle, daughter])
-
-        # Remove any non-existing entries.
-        return OrderedDict(
-            (key, value)
-            for key, value in targets.items()
-            if value is not None
-        )
+    def tree_key_data(self, hdf5_file: h5py.File, limit_index, root, group, index):
+        key = "/".join((*group, index))
+        data = self.dataset(hdf5_file, [root, *group], index)
+        data = torch.from_numpy(data[:][limit_index])
+        return key, data
 
     def load_regressions(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Tuple[Dict[str, Tensor], Dict[str, str]]:
-        ROOT = SpecialKey.Regressions
-        EVENT = SpecialKey.Event
-        PARTICLE = SpecialKey.Particle
-        TARGET_INFO = self.event_info.regressions
-        TYPE_INFO = self.event_info.regression_types
-
-        # Load all possible regressions in the event.
+        tree_key_data = functools.partial(self.tree_key_data, hdf5_file, limit_index, SpecialKey.Regressions)
         targets = OrderedDict()
         types = OrderedDict()
 
-        for target, target_type in zip(TARGET_INFO[EVENT], TYPE_INFO[EVENT]):
-            target_key = "/".join((SpecialKey.Event, target))
-            target_data = self.dataset(hdf5_file, [ROOT, EVENT], target)
-            targets[target_key] = torch.from_numpy(target_data[:][limit_index])
-            types[target_key] = target_type
+        for target in self.event_info.regressions[SpecialKey.Event]:
+            key, data = tree_key_data([SpecialKey.Event], target.name)
+            targets[key] = data
+            types[key] = target.type
 
-        for particle in self.event_info.assignments:
-            for target, target_type in zip(TARGET_INFO[particle][PARTICLE], TYPE_INFO[particle][PARTICLE]):
-                target_key = "/".join((particle, PARTICLE, target))
-                target_data = self.dataset(hdf5_file, [ROOT, particle, PARTICLE], target)
-                targets[target_key] = torch.from_numpy(target_data[:][limit_index])
-                types[target_key] = target_type
+        for particle in self.event_info.event_particles:
+            for target in self.event_info.regressions[particle][SpecialKey.Particle]:
+                key, data = tree_key_data([particle, SpecialKey.Particle], target.name)
+                targets[key] = data
+                types[key] = target.type
 
-            for daughter in self.event_info.assignments[particle][0]:
-                for target, target_type in zip(TARGET_INFO[particle][daughter], TYPE_INFO[particle][daughter]):
-                    target_key = "/".join((particle, daughter, target))
-                    target_data = self.dataset(hdf5_file, [ROOT, particle, daughter], target)
-                    targets[target_key] = torch.from_numpy(target_data[:][limit_index])
-                    types[target_key] = target_type
+            for daughter in self.event_info.product_particles[particle]:
+                for target in self.event_info.regressions[particle][daughter]:
+                    key, data = tree_key_data([particle, daughter], target.name)
+                    targets[key] = data
+                    types[key] = target.type
 
         return targets, types
 
     def load_classifications(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Dict[str, Tensor]:
-        ROOT = SpecialKey.Classifications
-        EVENT = SpecialKey.Event
-        PARTICLE = SpecialKey.Particle
+        tree_key_data = functools.partial(self.tree_key_data, hdf5_file, limit_index, SpecialKey.Classifications)
 
-        # Load all possible regressions in the event.
         targets = OrderedDict()
-        for target in self.event_info.classifications[EVENT]:
-            target_key = "/".join((SpecialKey.Event, target))
-            target_data = self.dataset(hdf5_file, [ROOT, EVENT], target)
-            targets[target_key] = torch.from_numpy(target_data[:][limit_index])
 
-        for particle in self.event_info.assignments:
-            for target in self.event_info.classifications[particle][PARTICLE]:
-                target_key = "/".join((particle, PARTICLE, target))
-                target_data = self.dataset(hdf5_file, [ROOT, particle, PARTICLE], target)
-                targets[target_key] = torch.from_numpy(target_data[:][limit_index])
+        def add_target(key, value):
+            targets[key] = value
 
-            for daughter in self.event_info.assignments[particle][0]:
+        for target in self.event_info.classifications[SpecialKey.Event]:
+            add_target(*tree_key_data([SpecialKey.Event], target))
+
+        for particle in self.event_info.product_particles:
+            for target in self.event_info.classifications[particle][SpecialKey.Particle]:
+                add_target(*tree_key_data([particle, SpecialKey.Particle], target))
+
+            for daughter in self.event_info.product_particles[particle]:
                 for target in self.event_info.classifications[particle][daughter]:
-                    target_key = "/".join((particle, daughter, target))
-                    target_data = self.dataset(hdf5_file, [ROOT, particle, daughter], target)
-                    targets[target_key] = torch.from_numpy(target_data[:][limit_index])
+                    add_target(*tree_key_data([particle, daughter], target))
 
         return targets
 
@@ -461,7 +384,7 @@ class JetReconstructionDataset(Dataset):
             if value is not None
         ))
 
-    def limit_dataset_to_mask(self, event_mask):
+    def limit_dataset_to_mask(self, event_mask: Tensor):
         for input_name, source in self.sources.items():
             source.limit(event_mask)
 
@@ -498,14 +421,14 @@ class JetReconstructionDataset(Dataset):
     def __len__(self) -> int:
         return self.num_events
 
-    def __getitem__(self, item) -> TBatch:
+    def __getitem__(self, item) -> Batch:
         sources = tuple(
             source[item]
             for source in self.sources.values()
         )
 
         assignments = tuple(
-            (assignment[item], mask[item])
+            AssignmentTargets(assignment[item], mask[item])
             for assignment, mask in self.assignments.values()
         )
 
@@ -521,4 +444,10 @@ class JetReconstructionDataset(Dataset):
             if value is not None
         }
 
-        return sources, self.num_vectors[item], assignments, regressions, classifications
+        return Batch(
+            sources,
+            self.num_vectors[item],
+            assignments,
+            regressions,
+            classifications
+        )

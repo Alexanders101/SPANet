@@ -46,7 +46,7 @@ class JetReconstructionBase(pl.LightningModule):
             self.classification_weights = torch.nn.ParameterDict(classification_weights)
 
         # Helper arrays for permutation groups. Used for the partial-event loss functions.
-        event_permutation_group = np.array(self.training_dataset.event_permutation_group)
+        event_permutation_group = np.array(self.event_info.event_permutation_group)
         self.event_permutation_tensor = torch.nn.Parameter(torch.from_numpy(event_permutation_group), False)
 
         # Helper variables for keeping track of the number of batches in each epoch.
@@ -73,6 +73,10 @@ class JetReconstructionBase(pl.LightningModule):
             "prefetch_factor": 2
         }
 
+    @property
+    def event_info(self):
+        return self.training_dataset.event_info
+
     def create_datasets(self):
         event_info_file = self.options.event_info_file
         training_file = self.options.training_file
@@ -91,28 +95,34 @@ class JetReconstructionBase(pl.LightningModule):
             validation_range = (train_validation_split, self.options.dataset_limit)
 
         # Construct primary training datasets
-        # Note that only the training dataset might be limited to full events or partial events.
-        training_dataset = self.dataset(data_file=training_file,
-                                        event_info=event_info_file,
-                                        limit_index=training_range,
-                                        jet_limit=self.options.limit_to_num_jets,
-                                        partial_events=self.options.partial_events,
-                                        randomization_seed=self.options.dataset_randomization,)
+        # Note that only the training dataset should be limited to full events or partial events.
+        training_dataset = self.dataset(
+            data_file=training_file,
+            event_info=event_info_file,
+            limit_index=training_range,
+            vector_limit=self.options.limit_to_num_jets,
+            partial_events=self.options.partial_events,
+            randomization_seed=self.options.dataset_randomization
+        )
 
-        validation_dataset = self.dataset(data_file=validation_file,
-                                          event_info=event_info_file,
-                                          limit_index=validation_range,
-                                          jet_limit=self.options.limit_to_num_jets,
-                                          randomization_seed=self.options.dataset_randomization)
+        validation_dataset = self.dataset(
+            data_file=validation_file,
+            event_info=event_info_file,
+            limit_index=validation_range,
+            vector_limit=self.options.limit_to_num_jets,
+            randomization_seed=self.options.dataset_randomization
+        )
 
         # Optionally construct the testing dataset.
         # This is not used in the main training script but is still useful for testing later.
         testing_dataset = None
         if len(self.options.testing_file) > 0:
-            testing_dataset = self.dataset(data_file=self.options.testing_file,
-                                           event_info=self.options.event_info_file,
-                                           limit_index=1.0,
-                                           jet_limit=self.options.limit_to_num_jets)
+            testing_dataset = self.dataset(
+                data_file=self.options.testing_file,
+                event_info=self.options.event_info_file,
+                limit_index=1.0,
+                vector_limit=self.options.limit_to_num_jets
+            )
 
         return training_dataset, validation_dataset, testing_dataset
 

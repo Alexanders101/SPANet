@@ -1,15 +1,11 @@
-from typing import Tuple
-
 import h5py
 import numpy as np
 
 import torch
-from torch import Tensor
 
-from spanet.dataset.event_info import EventInfo
+from spanet.dataset.types import SpecialKey, Statistics, Source
 from spanet.dataset.inputs.BaseInput import BaseInput
 
-SpecialKey = EventInfo.SpecialKey
 
 
 class SequentialInput(BaseInput):
@@ -44,7 +40,7 @@ class SequentialInput(BaseInput):
         self.source_data = self.source_data[event_mask].contiguous()
         self.source_mask = self.source_mask[event_mask].contiguous()
 
-    def compute_statistics(self) -> Tuple[Tensor, Tensor]:
+    def compute_statistics(self) -> Statistics:
         masked_data = self.source_data[self.source_mask]
         masked_mean = masked_data.mean(0)
         masked_std = masked_data.std(0)
@@ -54,10 +50,10 @@ class SequentialInput(BaseInput):
         masked_mean[~self.event_info.normalized_features(self.input_name)] = 0
         masked_std[~self.event_info.normalized_features(self.input_name)] = 1
 
-        return masked_mean, masked_std
+        return Statistics(masked_mean, masked_std)
 
     def num_vectors(self) -> int:
         return self.source_mask.sum(1)
 
-    def __getitem__(self, item):
-        return self.source_data[item], self.source_mask[item]
+    def __getitem__(self, item) -> Source:
+        return Source(self.source_data[item], self.source_mask[item])

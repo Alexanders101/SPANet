@@ -1,16 +1,11 @@
-from typing import Tuple
-from collections import OrderedDict
-
 import h5py
 import numpy as np
 
 import torch
-from torch import Tensor
 
-from spanet.dataset.event_info import EventInfo
+from spanet.dataset.types import SpecialKey, Statistics, Source
 from spanet.dataset.inputs.BaseInput import BaseInput
 
-SpecialKey = EventInfo.SpecialKey
 
 
 class RelativeInput(BaseInput):
@@ -82,7 +77,7 @@ class RelativeInput(BaseInput):
         self.invariant_mask = self.invariant_mask[event_mask].contiguous()
         self.covariant_mask = self.covariant_mask[event_mask].contiguous()
 
-    def compute_statistics(self) -> Tuple[Tensor, Tensor]:
+    def compute_statistics(self) -> Statistics:
         masked_invariant_data = self.invariant_data[self.invariant_mask]
         masked_covariant_data = self.covariant_data[self.covariant_mask]
 
@@ -102,7 +97,7 @@ class RelativeInput(BaseInput):
         masked_covariant_mean[unnormalized_covariant_features] = 0
         masked_covariant_std[unnormalized_covariant_features] = 1
 
-        return (
+        return Statistics(
             torch.cat((masked_invariant_mean, masked_covariant_mean)),
             torch.cat((masked_invariant_std, masked_covariant_std))
         )
@@ -110,7 +105,7 @@ class RelativeInput(BaseInput):
     def num_vectors(self) -> int:
         return self.invariant_mask.sum(1)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> Source:
         invariant_data = self.invariant_data[item]
         covariant_data = self.covariant_data[item]
 
@@ -120,4 +115,7 @@ class RelativeInput(BaseInput):
         invariant_data_shape[-3] = invariant_data_shape[-2]
         invariant_data = invariant_data.expand(invariant_data_shape)
 
-        return torch.cat((invariant_data, covariant_data), -1), self.covariant_mask[item]
+        return Source(
+            data=torch.cat((invariant_data, covariant_data), -1),
+            mask=self.covariant_mask[item]
+        )

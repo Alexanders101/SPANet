@@ -6,8 +6,8 @@ from torch import Tensor
 from torch.nn import functional as F
 
 from spanet.options import Options
+from spanet.dataset.types import Batch, Source, AssignmentTargets
 from spanet.dataset.regressions import regression_loss
-from spanet.dataset.jet_reconstruction_dataset import TBatch
 from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReconstructionNetwork
 from spanet.network.utilities.divergence_losses import assignment_cross_entropy_loss, jensen_shannon_divergence
 
@@ -25,10 +25,10 @@ class JetReconstructionTraining(JetReconstructionNetwork):
 
         self.log_clip = torch.log(10 * torch.scalar_tensor(torch.finfo(torch.float32).eps)).item()
 
-        self.particle_names = list(self.training_dataset.event_info.assignments.keys())
-        self.daughter_names = {
-            particle: self.training_dataset.event_info.assignments[particle][0]
-            for particle in self.particle_names
+        self.event_particle_names = list(self.training_dataset.event_info.product_particles.keys())
+        self.product_particle_names = {
+            particle: self.training_dataset.event_info.product_particles[particle][0]
+            for particle in self.event_particle_names
         }
 
     def particle_symmetric_loss(self, assignment: Tensor, detection: Tensor, target: Tensor, mask: Tensor) -> Tensor:
@@ -36,8 +36,8 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         detection_loss = F.binary_cross_entropy_with_logits(detection, mask.float(), reduction='none')
 
         return torch.stack((
-                self.options.assignment_loss_scale * assignment_loss,
-                self.options.detection_loss_scale * detection_loss
+            self.options.assignment_loss_scale * assignment_loss,
+            self.options.detection_loss_scale * detection_loss
         ))
 
     def compute_symmetric_losses(self, assignments: List[Tensor], detections: List[Tensor], targets):
@@ -105,7 +105,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
     def symmetric_divergence_loss(self, predictions: List[Tensor], masks: Tensor) -> Tensor:
         divergence_loss = []
 
-        for i, j in self.training_dataset.unordered_event_transpositions:
+        for i, j in self.event_info.event_transpositions:
             # Symmetric divergence between these two distributions
             div = jensen_shannon_divergence(predictions[i], predictions[j])
 
@@ -119,8 +119,14 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         return torch.stack(divergence_loss).mean(0)
         # return -1 * torch.stack(divergence_loss).sum(0) / len(self.training_dataset.unordered_event_transpositions)
 
-    def add_kl_loss(self, total_loss: Tensor, assignments, masks, weights) -> Tensor:
-        if len(self.training_dataset.unordered_event_transpositions) == 0:
+    def add_kl_loss(
+            self,
+            total_loss: List[Tensor],
+            assignments: List[Tensor],
+            masks: Tensor,
+            weights: Tensor
+    ) -> List[Tensor]:
+        if len(self.event_info.event_transpositions) == 0:
             return total_loss
 
         # Compute the symmetric loss between all valid pairs of distributions.
@@ -128,13 +134,18 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         kl_loss = (weights * kl_loss).sum() / masks.sum()
 
         with torch.no_grad():
-            self.log("loss/symmetric_loss", kl_loss)
+            self.log("loss/symmetric_loss", kl_loss, sync_dist=True)
             if torch.isnan(kl_loss):
                 raise ValueError("Symmetric KL Loss has diverged.")
 
         return total_loss + [self.options.kl_loss_scale * kl_loss]
 
-    def add_regression_loss(self, total_loss: Tensor, predictions: Dict[str, Tensor], targets:  Dict[str, Tensor]) -> Tensor:
+    def add_regression_loss(
+            self,
+            total_loss: List[Tensor],
+            predictions: Dict[str, Tensor],
+            targets:  Dict[str, Tensor]
+    ) -> List[Tensor]:
         regression_terms = []
 
         for key in targets:
@@ -142,11 +153,21 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             current_prediction = predictions[key]
             current_target = targets[key]
 
-            current_loss = regression_loss(current_target_type)(current_prediction, current_target)
-            current_loss = torch.nanmean(current_loss)
+            current_mean = self.regression_decoder.networks[key].mean
+            current_std = self.regression_decoder.networks[key].std
+
+            current_mask = ~torch.isnan(current_target)
+
+            current_loss = regression_loss(current_target_type)(
+                current_prediction[current_mask],
+                current_target[current_mask],
+                current_mean,
+                current_std
+            )
+            current_loss = torch.mean(current_loss)
 
             with torch.no_grad():
-                self.log(f"loss/regression/{key}", current_loss)
+                self.log(f"loss/regression/{key}", current_loss, sync_dist=True)
 
             regression_terms.append(self.options.regression_loss_scale * current_loss)
 
@@ -154,10 +175,10 @@ class JetReconstructionTraining(JetReconstructionNetwork):
 
     def add_classification_loss(
             self,
-            total_loss: Tensor,
+            total_loss: List[Tensor],
             predictions: Dict[str, Tensor],
             targets: Dict[str, Tensor]
-    ) -> Tensor:
+    ) -> List[Tensor]:
         classification_terms = []
 
         for key in targets:
@@ -175,26 +196,28 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             classification_terms.append(self.options.classification_loss_scale * current_loss)
 
             with torch.no_grad():
-                self.log(f"loss/classification/{key}", current_loss)
+                self.log(f"loss/classification/{key}", current_loss, sync_dist=True)
 
         return total_loss + classification_terms
 
-    def training_step(self, batch: TBatch, batch_nb: int) -> Dict[str, Tensor]:
-        sources, num_jets, targets, regression_targets, classification_targets = batch
-
+    def training_step(self, batch: Batch, batch_nb: int) -> Dict[str, Tensor]:
         # ===================================================================================================
         # Network Forward Pass
         # ---------------------------------------------------------------------------------------------------
-        assignments, detections, regressions, classifications = self.forward(sources)
+        outputs = self.forward(batch.sources)
 
         # ===================================================================================================
         # Initial log-likelihood loss for classification task
         # ---------------------------------------------------------------------------------------------------
-        symmetric_losses, best_indices = self.symmetric_losses(assignments, detections, targets)
+        symmetric_losses, best_indices = self.symmetric_losses(
+            outputs.assignments,
+            outputs.detections,
+            batch.assignment_targets
+        )
 
         # Construct the newly permuted masks based on the minimal permutation found during NLL loss.
         permutations = self.event_permutation_tensor[best_indices].T
-        masks = torch.stack([target[1] for target in targets])
+        masks = torch.stack([target.mask for target in batch.assignment_targets])
         masks = torch.gather(masks, 0, permutations)
 
         # ===================================================================================================
@@ -211,7 +234,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
 
         # Balance based on the number of jets in this event
         if self.balance_jets:
-            weights *= self.jet_weights_tensor[num_jets]
+            weights *= self.jet_weights_tensor[batch.num_vectors]
 
         # Take the weighted average of the symmetric loss terms.
         masks = masks.unsqueeze(1)
@@ -223,10 +246,10 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # ---------------------------------------------------------------------------------------------------
         with torch.no_grad():
             for name, l in zip(self.training_dataset.assignments, assignment_loss):
-                self.log(f"loss/{name}/assignment_loss", l)
+                self.log(f"loss/{name}/assignment_loss", l, sync_dist=True)
 
             for name, l in zip(self.training_dataset.assignments, detection_loss):
-                self.log(f"loss/{name}/detection_loss", l)
+                self.log(f"loss/{name}/detection_loss", l, sync_dist=True)
 
             if torch.isnan(assignment_loss).any():
                 raise ValueError("Assignment loss has diverged!")
@@ -249,19 +272,19 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # Auxiliary loss terms which are added to reconstruction loss for alternative targets.
         # ---------------------------------------------------------------------------------------------------
         if self.options.kl_loss_scale > 0:
-            total_loss = self.add_kl_loss(total_loss, assignments, masks, weights)
+            total_loss = self.add_kl_loss(total_loss, outputs.assignments, masks, weights)
 
         if self.options.regression_loss_scale > 0:
-            total_loss = self.add_regression_loss(total_loss, regressions, regression_targets)
+            total_loss = self.add_regression_loss(total_loss, outputs.regressions, batch.regression_targets)
 
         if self.options.classification_loss_scale > 0:
-            total_loss = self.add_classification_loss(total_loss, classifications, classification_targets)
+            total_loss = self.add_classification_loss(total_loss, outputs.classifications, batch.classification_targets)
 
         # ===================================================================================================
         # Combine and return the loss
         # ---------------------------------------------------------------------------------------------------
         total_loss = torch.cat([loss.view(-1) for loss in total_loss])
 
-        self.log("loss/total_loss", total_loss.sum())
+        self.log("loss/total_loss", total_loss.sum(), sync_dist=True)
 
-        return total_loss.sum()
+        return total_loss.mean()

@@ -15,7 +15,7 @@ class SymmetricAttentionBase(nn.Module):
 
     def __init__(self,
                  options: Options,
-                 order: int,
+                 degree: int,
                  permutation_indices: List[Tuple[int, ...]] = None,
                  attention_dim: int = None) -> None:
         super(SymmetricAttentionBase, self).__init__()
@@ -27,12 +27,12 @@ class SymmetricAttentionBase(nn.Module):
         self.permutation_indices = [] if permutation_indices is None else permutation_indices
         self.batch_size = options.batch_size
         self.features = options.hidden_dim
-        self.order = order
+        self.degree = degree
 
         # Add any missing cycles to have a complete group
-        self.permutation_indices = complete_indices(self.order, self.permutation_indices)
+        self.permutation_indices = complete_indices(self.degree, self.permutation_indices)
         self.permutation_group = symmetry_group(self.permutation_indices)
         self.no_identity_permutations = [p for p in self.permutation_group if sorted(p) != p]
         self.batch_no_identity_permutations = [(0,) + tuple(e + 1 for e in p) for p in self.no_identity_permutations]
 
-        self.weights_scale = torch.sqrt(torch.scalar_tensor(self.features)) ** self.order
+        self.weights_scale = torch.sqrt(torch.scalar_tensor(self.features)) ** self.degree

@@ -1,12 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, List
+from typing import List
 import h5py
 
 import numpy as np
-import torch
-from torch import Tensor
 
 from spanet.dataset.event_info import EventInfo
+from spanet.dataset.types import Statistics, Source
 
 
 class BaseInput(ABC):
@@ -23,6 +22,7 @@ class BaseInput(ABC):
         self.input_name = input_name
         self.event_info = event_info
         self.num_events = num_events
+        self.input_features = self.event_info.input_features[input_name]
 
         self.load(hdf5_file, limit_index)
 
@@ -44,7 +44,7 @@ class BaseInput(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def compute_statistics(self) -> Tuple[Tensor, Tensor]:
+    def compute_statistics(self) -> Statistics:
         raise NotImplementedError()
 
     @abstractmethod
@@ -52,5 +52,5 @@ class BaseInput(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def __getitem__(self, item) -> Tuple[Tensor, Tensor]:
+    def __getitem__(self, item) -> Source:
         raise NotImplementedError()

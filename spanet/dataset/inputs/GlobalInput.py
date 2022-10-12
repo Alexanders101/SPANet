@@ -6,16 +6,12 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from spanet.dataset.event_info import EventInfo
+from spanet.dataset.types import SpecialKey, Statistics, Source
 from spanet.dataset.inputs.BaseInput import BaseInput
-
-SpecialKey = EventInfo.SpecialKey
-
 
 class GlobalInput(BaseInput):
 
-    # noinspection PyAttributeOutsideInit
-    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Tuple[Tensor, Tensor]:
+    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray):
         input_group = [SpecialKey.Inputs, self.input_name]
 
         # Try and load a mask for this global features. If none is present, assume all vectors are valid.
@@ -41,7 +37,9 @@ class GlobalInput(BaseInput):
         source_mask = source_mask[limit_index].contiguous()
 
         # Add a fake timestep dimension to global vectors.
+        # noinspection PyAttributeOutsideInit
         self.source_data = source_data.unsqueeze(1)
+        # noinspection PyAttributeOutsideInit
         self.source_mask = source_mask.unsqueeze(1)
 
     # noinspection PyAttributeOutsideInit
@@ -59,10 +57,10 @@ class GlobalInput(BaseInput):
         masked_mean[~self.event_info.normalized_features(self.input_name)] = 0
         masked_std[~self.event_info.normalized_features(self.input_name)] = 1
 
-        return masked_mean, masked_std
+        return Statistics(masked_mean, masked_std)
 
     def num_vectors(self) -> int:
         return self.source_mask.sum(1)
 
     def __getitem__(self, item):
-        return self.source_data[item], self.source_mask[item]
+        return Source(self.source_data[item], self.source_mask[item])

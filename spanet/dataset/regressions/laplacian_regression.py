@@ -1,8 +1,7 @@
 import torch
 from torch import Tensor
-from typing import Tuple
 
-from spanet.dataset.regressions.base_regression import Regression
+from spanet.dataset.regressions.base_regression import Regression, Statistics
 
 
 class LaplacianRegression(Regression):
@@ -11,14 +10,14 @@ class LaplacianRegression(Regression):
         return "laplacian"
 
     @staticmethod
-    def statistics(data: Tensor) -> Tuple[Tensor, Tensor]:
+    def statistics(data: Tensor) -> Statistics:
         valid_data = data[~torch.isnan(data)]
 
         median = torch.median(valid_data)
         deviation = torch.mean(torch.abs(valid_data - median))
 
-        return median, deviation
+        return Statistics(median, deviation)
 
     @staticmethod
-    def loss(predictions: Tensor, targets: Tensor) -> Tensor:
-        return torch.abs(predictions - targets)
+    def loss(predictions: Tensor, targets: Tensor, mean: Tensor, std: Tensor) -> Tensor:
+        return torch.abs(predictions - targets) / std

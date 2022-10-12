@@ -3,7 +3,7 @@ from typing import Tuple
 from torch import Tensor, nn
 
 from spanet.options import Options
-from spanet.dataset.inputs import InputType
+from spanet.dataset.types import InputType
 from spanet.dataset.jet_reconstruction_dataset import JetReconstructionDataset
 
 from spanet.network.layers.embedding.normalizer import Normalizer

@@ -16,13 +16,13 @@ from spanet.network.utilities.linear_form import create_symmetric_function
 class SymmetricAttentionSplit(SymmetricAttentionBase):
     def __init__(self,
                  options: Options,
-                 order: int,
+                 degree: int,
                  permutation_indices: List[Tuple[int, ...]] = None,
                  attention_dim: int = None) -> None:
 
         super(SymmetricAttentionSplit, self).__init__(
             options,
-            order,
+            degree,
             permutation_indices,
             attention_dim
         )
@@ -34,14 +34,14 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
                 options.num_jet_embedding_layers,
                 options.num_jet_encoder_layers
             )
-            for _ in range(order)
+            for _ in range(degree)
         ])
 
         # After encoding, the jets are fed into a final linear layer to extract logits.
         # TODO Play around with bias
         self.linear_layers = nn.ModuleList([
             nn.Linear(options.hidden_dim, self.attention_dim, bias=True)
-            for _ in range(order)
+            for _ in range(degree)
         ])
 
         # Mask the vectors before applying attentino operation.
@@ -65,9 +65,9 @@ class SymmetricAttentionSplit(SymmetricAttentionBase):
         input_index_names = np.array(list(self.INPUT_INDEX_NAMES))
 
         operations = map(lambda x: f"{x}bi", input_index_names)
-        operations = ','.join(islice(operations, self.order))
+        operations = ','.join(islice(operations, self.degree))
 
-        result = f"->b{''.join(input_index_names[:self.order])}"
+        result = f"->b{''.join(input_index_names[:self.degree])}"
 
         return operations + result
 

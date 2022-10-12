@@ -1,17 +1,15 @@
-from typing import Tuple, Dict, List
-
 import numpy as np
 import torch
-from torch import Tensor, nn
+from torch import nn
 
 from spanet.options import Options
+from spanet.dataset.types import Tuple, Outputs, Source, Predictions
 
 from spanet.network.layers.vector_encoder import JetEncoder
 from spanet.network.layers.branch_decoder import BranchDecoder
 from spanet.network.layers.embedding import MultiInputVectorEmbedding
 from spanet.network.layers.regression_decoder import RegressionDecoder
 from spanet.network.layers.classification_decoder import ClassificationDecoder
-
 
 from spanet.network.prediction_selection import extract_predictions
 from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
@@ -47,13 +45,13 @@ class JetReconstructionNetwork(JetReconstructionBase):
         self.branch_decoders = nn.ModuleList([
             BranchDecoder(
                 options,
-                name,
-                self.training_dataset.event_info.assignments[name][0],
-                size,
-                permutation_indices,
+                event_particle_name,
+                self.event_info.product_particles[event_particle_name].names,
+                product_symmetry,
                 self.enable_softmax
             )
-            for name, (size, permutation_indices) in self.training_dataset.assignment_symmetries
+            for event_particle_name, product_symmetry
+            in self.event_info.product_symmetries.items()
         ])
 
         self.regression_decoder = compile_module(RegressionDecoder(
@@ -73,10 +71,7 @@ class JetReconstructionNetwork(JetReconstructionBase):
     def enable_softmax(self):
         return True
 
-    def forward(
-            self,
-            sources: Tuple[Tuple[Tensor, Tensor], ...]
-    ) -> Tuple[List[Tensor], List[Tensor], Dict[str, Tensor], Dict[str, List[Tensor]]]:
+    def forward(self, sources: Tuple[Source, ...]) -> Outputs:
         # Embed all of the different input regression_vectors into the same latent space.
         embeddings, padding_masks, sequence_masks, global_masks = self.embedding(sources)
 
@@ -91,35 +86,38 @@ class JetReconstructionNetwork(JetReconstructionBase):
             "EVENT": event_vector
         }
 
+        # Pass the shared hidden state to every decoder branch
         for decoder in self.branch_decoders:
             (
                 assignment,
                 detection,
                 assignment_mask,
-                particle_vector,
-                daughter_vectors
+                event_particle_vector,
+                product_particle_vectors
             ) = decoder(hidden, padding_masks, sequence_masks, global_masks)
 
             assignments.append(assignment)
             detections.append(detection)
 
-            # Assign the summarising vectors to their correct structure
-            encoded_vectors["/".join([decoder.name, "PARTICLE"])] = particle_vector
-            for daughter_name, daughter_vector in zip(decoder.daughter_names, daughter_vectors):
-                encoded_vectors["/".join([decoder.name, daughter_name])] = daughter_vector
+            # Assign the summarising vectors to their correct structure.
+            encoded_vectors["/".join([decoder.particle_name, "PARTICLE"])] = event_particle_vector
+            for product_name, product_vector in zip(decoder.product_names, product_particle_vectors):
+                encoded_vectors["/".join([decoder.particle_name, product_name])] = product_vector
 
-        # Predict the valid regressions for any real values associated with the event
+        # Predict the valid regressions for any real values associated with the event.
         regressions = self.regression_decoder(encoded_vectors)
+
+        # Predict additional classification targets for any branch of the event.
         classifications = self.classification_decoder(encoded_vectors)
 
-        # Pass the shared hidden state to every decoder branch
-        return assignments, detections, regressions, classifications
+        return Outputs(
+            assignments,
+            detections,
+            regressions,
+            classifications
+        )
 
-    def predict(
-            self,
-            sources: Tuple[Tuple[Tensor, Tensor], ...]
-    ) -> Tuple[TArray, TArray, Dict[str, TArray], Dict[str, List[TArray]]]:
-
+    def predict(self, sources: Tuple[Source, ...]) -> Predictions:
         with torch.no_grad():
             assignments, detections, regressions, classifications = self.forward(sources)
 
@@ -146,9 +144,14 @@ class JetReconstructionNetwork(JetReconstructionBase):
                 for key, value in classifications.items()
             }
 
-        return assignments, detections, regressions, classifications
+        return Predictions(
+            assignments,
+            detections,
+            regressions,
+            classifications
+        )
 
-    def predict_assignments(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> np.ndarray:
+    def predict_assignments(self, sources: Tuple[Source, ...]) -> np.ndarray:
         # Run the base prediction step
         with torch.no_grad():
             assignments = [
@@ -159,7 +162,7 @@ class JetReconstructionNetwork(JetReconstructionBase):
         # Find the optimal selection of jets from the output distributions.
         return extract_predictions(assignments)
 
-    def predict_assignments_and_detections(self, sources: Tuple[Tuple[Tensor, Tensor], ...]) -> Tuple[TArray, TArray]:
+    def predict_assignments_and_detections(self, sources: Tuple[Source, ...]) -> Tuple[TArray, TArray]:
         assignments, detections, regressions, classifications = self.predict(sources)
 
         # Always predict the particle exists if we didn't train on it
