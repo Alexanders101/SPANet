@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from typing import Optional
 from os import getcwd, makedirs, environ
+import shutil
 import json
 
 import torch
@@ -8,6 +9,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.profiler import PyTorchProfiler
+from pytorch_lightning.strategies.ddp import DDPStrategy
 
 from spanet import JetReconstructionModel, Options
 
@@ -121,7 +123,7 @@ def main(
 
     # If we are using more than one gpu, then switch to DDP training
     # distributed_backend = 'dp' if options.num_gpu > 1 else None
-    distributed_backend = 'ddp' if options.num_gpu > 1 else None
+    distributed_backend = DDPStrategy(find_unused_parameters=False) if options.num_gpu > 1 else None
 
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
     log_dir = getcwd() if log_dir is None else log_dir
@@ -151,7 +153,7 @@ def main(
                          gpus=options.num_gpu if options.num_gpu > 0 else None,
                          track_grad_norm=2 if options.verbose_output else -1,
                          gradient_clip_val=options.gradient_clip,
-                         weights_summary='full' if options.verbose_output else 'top',
+                         # weights_summary='full' if options.verbose_output else 'top',
                          precision=16 if fp16 else 32,
                          profiler=profiler)
 
@@ -159,8 +161,11 @@ def main(
     if master:
         print(f"Training Version {trainer.logger.version}")
         makedirs(trainer.logger.log_dir, exist_ok=True)
-        with open(trainer.logger.log_dir + "/options.json", 'w') as json_file:
+
+        with open(f"{trainer.logger.log_dir}/options.json", 'w') as json_file:
             json.dump(options.__dict__, json_file, indent=4)
+
+        shutil.copy2(options.event_info_file, f"{trainer.logger.log_dir}/event.yaml")
 
     trainer.fit(model)
     # -------------------------------------------------------------------------------------------------------
