@@ -7,36 +7,53 @@ from spanet.network.layers.linear_block.masking import create_masking
 from spanet.options import Options
 
 
+# class GRUGate(nn.Module):
+#     def __init__(self, hidden_dim, gate_initialization: float = 2.0):
+#         super(GRUGate, self).__init__()
+#
+#         self.linear_W_r = nn.Linear(hidden_dim, hidden_dim, bias=True)
+#         self.linear_U_r = nn.Linear(hidden_dim, hidden_dim, bias=False)
+#
+#         self.linear_W_z = nn.Linear(hidden_dim, hidden_dim, bias=True)
+#         self.linear_U_z = nn.Linear(hidden_dim, hidden_dim, bias=False)
+#
+#         self.linear_W_g = nn.Linear(hidden_dim, hidden_dim, bias=True)
+#         self.linear_U_g = nn.Linear(hidden_dim, hidden_dim, bias=False)
+#
+#         self.gate_bias = nn.Parameter(torch.ones(hidden_dim) * gate_initialization)
+#
+#     def forward(self, vectors: Tensor, residual: Tensor) -> Tensor:
+#         r = torch.sigmoid(self.linear_W_r(vectors) + self.linear_U_r(residual))
+#         z = torch.sigmoid(self.linear_W_z(vectors) + self.linear_U_z(residual) - self.gate_bias)
+#         h = torch.tanh(self.linear_W_g(vectors) + self.linear_U_g(r * residual))
+#
+#         return (1 - z) * residual + z * h
+
 class GRUGate(nn.Module):
-    def __init__(self, hidden_dim, gate_initialization: float = 2.0):
+    def __init__(self, hidden_dim):
         super(GRUGate, self).__init__()
 
-        self.linear_W_r = nn.Linear(hidden_dim, hidden_dim, bias=True)
-        self.linear_U_r = nn.Linear(hidden_dim, hidden_dim, bias=False)
-
-        self.linear_W_z = nn.Linear(hidden_dim, hidden_dim, bias=True)
-        self.linear_U_z = nn.Linear(hidden_dim, hidden_dim, bias=False)
-
-        self.linear_W_g = nn.Linear(hidden_dim, hidden_dim, bias=True)
-        self.linear_U_g = nn.Linear(hidden_dim, hidden_dim, bias=False)
-
-        self.gate_bias = nn.Parameter(torch.ones(hidden_dim) * gate_initialization)
+        self.gru = nn.GRUCell(hidden_dim, hidden_dim)
 
     def forward(self, vectors: Tensor, residual: Tensor) -> Tensor:
-        r = torch.sigmoid(self.linear_W_r(vectors) + self.linear_U_r(residual))
-        z = torch.sigmoid(self.linear_W_z(vectors) + self.linear_U_z(residual) - self.gate_bias)
-        h = torch.tanh(self.linear_W_g(vectors) + self.linear_U_g(r * residual))
+        timesteps, batch_size, hidden_dim = vectors.shape
+        vectors = vectors.view(timesteps * batch_size, hidden_dim)
+        residual = residual.view(timesteps * batch_size, hidden_dim)
 
-        return (1 - z) * residual + z * h
+        output = self.gru(vectors, residual)
+        output = output.view(timesteps, batch_size, hidden_dim)
+
+        return output
 
 
 class GRUBlock(nn.Module):
-    __constants__ = ['output_dim', 'skip_connection', 'hidden_dim']
+    __constants__ = ['input_dim', 'output_dim', 'skip_connection', 'hidden_dim']
 
     # noinspection SpellCheckingInspection
     def __init__(self, options: Options, input_dim: int, output_dim: int, skip_connection: bool = False):
         super(GRUBlock, self).__init__()
 
+        self.input_dim = input_dim
         self.output_dim = output_dim
         self.skip_connection = skip_connection
         self.hidden_dim = int(round(options.transformer_dim_scale * input_dim))
@@ -82,7 +99,7 @@ class GRUBlock(nn.Module):
         y: [T, B, D]
             Output data.
         """
-        max_jets, batch_size, dimensions = x.shape
+        timesteps, batch_size, input_dim = x.shape
 
         # -----------------------------------------------------------------------------
         # Apply normalization first for this type of linear block.
@@ -92,11 +109,9 @@ class GRUBlock(nn.Module):
 
         # -----------------------------------------------------------------------------
         # Flatten the data and apply the basic matrix multiplication and non-linearity.
-        # x: [T * B, I]
         # output: [T * B, I]
         # -----------------------------------------------------------------------------
-        x = x.reshape(max_jets * batch_size, dimensions)
-        output = output.reshape(max_jets * batch_size, dimensions)
+        output = output.reshape(timesteps * batch_size, self.input_dim)
 
         # -----------------------------------------------------------------------------
         # Apply linear layer with expansion in the middle.
@@ -105,16 +120,17 @@ class GRUBlock(nn.Module):
         output = self.linear_1(output)
         output = self.linear_2(output)
 
-        # -----------------------------------------------------------------------------
-        # Apply gating mechanism and skip connection using the GRU mechanism.
-        # output: [T * B, O]
-        # -----------------------------------------------------------------------------
-        output = self.gru(output, self.residual(x))
-
         # --------------------------------------------------------------------------
         # Reshape the data back into the time-series and apply normalization.
         # output: [T, B, O]
         # --------------------------------------------------------------------------
-        output = output.reshape(max_jets, batch_size, self.output_dim)
+        output = output.reshape(timesteps, batch_size, self.output_dim)
+
+        # -----------------------------------------------------------------------------
+        # Apply gating mechanism and skip connection using the GRU mechanism.
+        # output: [T, B, O]
+        # -----------------------------------------------------------------------------
+        if self.skip_connection:
+            output = self.gru(output, self.residual(x))
 
         return self.masking(output, sequence_mask)

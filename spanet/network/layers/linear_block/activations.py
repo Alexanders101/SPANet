@@ -32,10 +32,7 @@ class ZeroModule(nn.Module):
 
 
 def create_residual_connection(skip_connection: bool, input_dim: int, output_dim: int) -> nn.Module:
-    if not skip_connection:
-        return ZeroModule()
-
-    if input_dim == output_dim:
+    if input_dim == output_dim or not skip_connection:
         return nn.Identity()
 
     return nn.Linear(input_dim, output_dim)

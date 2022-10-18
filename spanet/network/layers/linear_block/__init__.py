@@ -1,3 +1,5 @@
+from torch import jit
+
 from spanet.options import Options
 from spanet.network.layers.linear_block.gru_block import GRUBlock
 from spanet.network.layers.linear_block.basic_block import BasicBlock
@@ -15,10 +17,10 @@ def create_linear_block(
     linear_block_type = linear_block_type.lower().replace("_", "").replace(" ", "")
 
     if linear_block_type == "resnet":
-        return ResNetBlock(options, input_dim, output_dim, skip_connection)
+        return jit.script(ResNetBlock(options, input_dim, output_dim, skip_connection))
     elif linear_block_type == 'gated':
-        return GatedBlock(options, input_dim, output_dim, skip_connection)
+        return jit.script(GatedBlock(options, input_dim, output_dim, skip_connection))
     elif linear_block_type == 'gru':
-        return GRUBlock(options, input_dim, output_dim, skip_connection)
+        return jit.script(GRUBlock(options, input_dim, output_dim, skip_connection))
     else:
-        return BasicBlock(options, input_dim, output_dim, skip_connection)
+        return jit.script(BasicBlock(options, input_dim, output_dim, skip_connection))

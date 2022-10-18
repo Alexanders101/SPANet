@@ -1,4 +1,4 @@
-from torch import Tensor, nn
+from torch import Tensor, nn, jit
 
 from spanet.options import Options
 from spanet.network.layers.linear_block.gru_block import GRUGate, GRUBlock
@@ -21,11 +21,11 @@ class GTrXL(nn.Module):
 
     def forward(self, x: Tensor, padding_mask: Tensor, sequence_mask: Tensor) -> Tensor:
         output = self.attention_norm(x)
-        output = self.attention(
+        output, _ = self.attention(
             output, output, output,
             key_padding_mask=padding_mask,
             need_weights=False
-        )[0]
+        )
 
         output = self.attention_gate(output, x)
 
