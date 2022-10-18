@@ -18,8 +18,13 @@ dependencies:
   - pytorch
   - torchvision
   - torchaudio
-  - cudatoolkit=11.6
+  - cudatoolkit=11.3
+  - cuda-nvcc
   - pytorch-lightning
 
   - jupyterlab
   - seaborn
+  - rich
+
+  - pip:
+      - fairscale

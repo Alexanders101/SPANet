@@ -261,12 +261,29 @@ class Options(Namespace):
         self.trial_output_dir: str = './test_output'
 
     def display(self):
-        print("=" * 70)
-        print("Options")
-        print("-" * 70)
-        for key, val in sorted(self.__dict__.items()):
-            print(f"{key:32}: {val}")
-        print("=" * 70)
+        try:
+            from rich import get_console
+            from rich.table import Table
+
+            default_options = self.__class__().__dict__
+            console = get_console()
+
+            table = Table(title="Configuration", header_style="bold magenta")
+            table.add_column("Parameter", justify="left")
+            table.add_column("Value", justify="left")
+
+            for key, value in sorted(self.__dict__.items()):
+                table.add_row(key, str(value), style="red" if value != default_options[key] else None)
+
+            console.print(table)
+
+        except ImportError:
+            print("=" * 70)
+            print("Options")
+            print("-" * 70)
+            for key, val in sorted(self.__dict__.items()):
+                print(f"{key:32}: {val}")
+            print("=" * 70)
 
     def update_options(self, new_options, update_datasets: bool = True):
         integer_options = {key for key, val in self.__dict__.items() if isinstance(val, int)}
