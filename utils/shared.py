@@ -5,13 +5,17 @@ import h5py
 import numpy as np
 
 
-def structure_printer(file, indent: int = 0):
+def structure_printer(file, shape: bool = True, indent=0):
+    space = 32 - 2 * indent - 2
     if isinstance(file, h5py.Dataset):
+        if shape:
+            print(f" :: {str(file.dtype):8} : {file.shape}", end="")
+
         return
 
     for key in file:
-        print("|-" + indent * "--" + key)
-        structure_printer(file[key], indent + 1)
+        print("\n|-" + indent * "--" + key.ljust(space), end="")
+        structure_printer(file[key], shape, indent + 1)
 
 
 def write(input_file, output_file, path: Optional[List[str]] = None, verbose: bool = True):

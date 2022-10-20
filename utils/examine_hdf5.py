@@ -4,33 +4,19 @@ from argparse import ArgumentParser
 from shared import structure_printer
 
 
-def main(filepath: str):
+def main(filepath: str, shape: bool = False):
     with h5py.File(filepath, 'r') as file:
-        print("Structure")
-        print("=" * 40)
-        structure_printer(file)
+        print("=" * 60)
+        print(f"| Structure for {filepath} ")
+        print("=" * 60)
+        structure_printer(file, shape)
         print("\n")
-
-        # print("Target Prevalence")
-        # print("=" * 40)
-        # for side in sorted(file['target']):
-        #     for target in sorted(file['target'][side]):
-        #         if target == "mask":
-        #             continue
-        #
-        #         pretty_side = side.split("_")[0].capitalize()
-        #         pretty_name = target.capitalize()
-        #         quark = " Quark" if len(pretty_name) <= 2 else ""
-        #
-        #         pretty_title = f"{pretty_side} {pretty_name}{quark}"
-        #         pretty_value = f"{100 * (file['target'][side][target][:] >= 0).mean():.2f}"
-        #         print(f"{pretty_title.ljust(16)}:  {pretty_value.rjust(5)}%")
-        #
-        #     print()
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("filepath", type=str, help="HDF5 file to examine")
+    parser.add_argument("-s", "--shape", action="store_true", help="Print the shape of each leaf node.")
 
-    main(parser.parse_args().filepath)
+    arguments = parser.parse_args()
+    main(arguments.filepath, arguments.shape)

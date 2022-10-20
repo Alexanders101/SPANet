@@ -67,7 +67,7 @@ def main(log_directory: str,
          gpu: bool):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
 
-    evaluation = evaluate_on_test_dataset(model, gpu)
+    evaluation = evaluate_on_test_dataset(model)
     create_hdf5_output(output_file, model.testing_dataset, evaluation)
 
 

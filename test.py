@@ -229,11 +229,15 @@ def main(
     event_file: Optional[str],
     batch_size: Optional[int],
     lines: int,
-    gpu: bool
+    gpu: bool,
+    latex: bool
 ):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
     results, jet_limits, clusters = evaluate_model(model, lines)
-    display_latex_table(results, jet_limits, clusters)
+    if latex:
+        display_latex_table(results, jet_limits, clusters)
+    else:
+        display_table(results, jet_limits, clusters)
 
 
 if __name__ == '__main__':
@@ -257,6 +261,9 @@ if __name__ == '__main__':
 
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="Evaluate network on the gpu.")
+
+    parser.add_argument("-tex", "--latex", action="store_true",
+                        help="Output a latex table.")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)
