@@ -7,43 +7,27 @@ from spanet.network.layers.linear_block.masking import create_masking
 from spanet.options import Options
 
 
-# class GRUGate(nn.Module):
-#     def __init__(self, hidden_dim, gate_initialization: float = 2.0):
-#         super(GRUGate, self).__init__()
-#
-#         self.linear_W_r = nn.Linear(hidden_dim, hidden_dim, bias=True)
-#         self.linear_U_r = nn.Linear(hidden_dim, hidden_dim, bias=False)
-#
-#         self.linear_W_z = nn.Linear(hidden_dim, hidden_dim, bias=True)
-#         self.linear_U_z = nn.Linear(hidden_dim, hidden_dim, bias=False)
-#
-#         self.linear_W_g = nn.Linear(hidden_dim, hidden_dim, bias=True)
-#         self.linear_U_g = nn.Linear(hidden_dim, hidden_dim, bias=False)
-#
-#         self.gate_bias = nn.Parameter(torch.ones(hidden_dim) * gate_initialization)
-#
-#     def forward(self, vectors: Tensor, residual: Tensor) -> Tensor:
-#         r = torch.sigmoid(self.linear_W_r(vectors) + self.linear_U_r(residual))
-#         z = torch.sigmoid(self.linear_W_z(vectors) + self.linear_U_z(residual) - self.gate_bias)
-#         h = torch.tanh(self.linear_W_g(vectors) + self.linear_U_g(r * residual))
-#
-#         return (1 - z) * residual + z * h
-
 class GRUGate(nn.Module):
-    def __init__(self, hidden_dim):
+    def __init__(self, hidden_dim, gate_initialization: float = 2.0):
         super(GRUGate, self).__init__()
 
-        self.gru = nn.GRUCell(hidden_dim, hidden_dim)
+        self.linear_W_r = nn.Linear(hidden_dim, hidden_dim, bias=True)
+        self.linear_U_r = nn.Linear(hidden_dim, hidden_dim, bias=False)
+
+        self.linear_W_z = nn.Linear(hidden_dim, hidden_dim, bias=True)
+        self.linear_U_z = nn.Linear(hidden_dim, hidden_dim, bias=False)
+
+        self.linear_W_g = nn.Linear(hidden_dim, hidden_dim, bias=True)
+        self.linear_U_g = nn.Linear(hidden_dim, hidden_dim, bias=False)
+
+        self.gate_bias = nn.Parameter(torch.ones(hidden_dim) * gate_initialization)
 
     def forward(self, vectors: Tensor, residual: Tensor) -> Tensor:
-        timesteps, batch_size, hidden_dim = vectors.shape
-        vectors = vectors.view(timesteps * batch_size, hidden_dim)
-        residual = residual.view(timesteps * batch_size, hidden_dim)
+        r = torch.sigmoid(self.linear_W_r(vectors) + self.linear_U_r(residual))
+        z = torch.sigmoid(self.linear_W_z(vectors) + self.linear_U_z(residual) - self.gate_bias)
+        h = torch.tanh(self.linear_W_g(vectors) + self.linear_U_g(r * residual))
 
-        output = self.gru(vectors, residual)
-        output = output.view(timesteps, batch_size, hidden_dim)
-
-        return output
+        return (1 - z) * residual + z * h
 
 
 class GRUBlock(nn.Module):
