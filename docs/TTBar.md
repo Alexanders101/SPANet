@@ -1,25 +1,27 @@
 # `ttbar` Example Guide
 
-Included in the repository are all files necessary to quickly test
-SPANets on `ttbar` events. This repository only contains a tiny example
-dataset for a sanity check, but you may acquire a larger training and testing data
-set here: http://mlphysics.ics.uci.edu/data/2021_ttbar/. Place the training and testing file into `data/ttbar` for
-the examples to work correctly.
-
-If you are using the docker container, then you can first alias `python` 
-(or whatever command you want to call it) to the following docker command.
-
-```
-# GPU Enabled
-# -----------
-alias python="docker run --rm -it --gpus all -v $(pwd):/workspace --workdir=/workspace ashmakovuci/igb-python python"
-
-# CPU Only
-# --------
-alias python="docker run --rm -it -v $(pwd):/workspace --workdir=/workspace ashmakovuci/igb-python python"
+## Environment
+We include an [anaconda environment](./environment.yml) file which can be used to install the required dependencies. You can get the anaconda package manager at [this link](https://www.anaconda.com/products/distribution). Alternatively, you can use the [mamba package manager](https://mamba.readthedocs.io/en/latest/installation.html). The environment can be installed with the following command:
+```bash
+conda env create -p ./environment --file environment.yaml
+conda activate ./environment
 ```
 
-### Training
+## Full Training Data
+
+Included in the repository are all files necessary to quickly test SPANets on `ttbar` events. This repository only contains a tiny example dataset for a sanity check, but you may acquire a larger training and testing data set here: [http://mlphysics.ics.uci.edu/data/2021_ttbar/](http://mlphysics.ics.uci.edu/data/2021_ttbar/). As of 2022/10/20, this dataset is still in the old style to ensure backwards compatibility. You may run the following commands to download and convert the dataset (In the SPANet root directory).
+```bash
+wget -O ./data/full_hadronic_ttbar/training.h5 http://mlphysics.ics.uci.edu/data/2021_ttbar/ttbar_training.h5
+python utils/convert_dataset.py ./data/full_hadronic_ttbar/training.h5 ./data/full_hadronic_ttbar/training.h5
+````
+
+### Testing Data
+```bash
+wget -O ./data/full_hadronic_ttbar/testing.h5 http://mlphysics.ics.uci.edu/data/2021_ttbar/ttbar_testing.h5
+python utils/convert_dataset.py ./data/full_hadronic_ttbar/testing.h5 ./data/full_hadronic_ttbar/testing.h5
+````
+
+## Training
 You can train a new SPANet on the ttbar dataset by running `train.py`.
 Specifying `NUM_GPUS` will determine how many parallel GPUs the training process 
 will use during training. You can set `NUM_GPUS` to be 0 to disable GPU training 
@@ -28,14 +30,14 @@ epoch has finished so that it creates a checkpoint file.
 Note that when using the full dataset,
 a complete training run takes roughly 4 hours on a single GPU.
 
-```
+```bash
 # Example Dataset
 # ---------------
-python train.py -of options_files/ttbar_example.json --gpus NUM_GPU
+python train.py -of options_files/full_hadronic_ttbar/example.json --gpus NUM_GPU
 
 # Full Dataset
 # ------------
-python train.py -of options_files/ttbar_full.json --gpus NUM_GPUS
+python train.py -of options_files/full_hadronic_ttbar/full_training.json --gpus NUM_GPUS
 ```
 
 If you get a `RuntimeError: CUDA out of memory` then you need to decrease the
@@ -58,7 +60,7 @@ and run
 
 Afterwards, navigate to `localhost:6006` in a browser.
 
-### Evaluation
+## Evaluation
 
 Now we want to view the efficiency of the network on a testing dataset.
 In the example config we are testing on the training dataset 
@@ -68,27 +70,27 @@ The following command will compute relevant performance metrics.
 The `--gpu` is optional. 
 If you trained more than once, then adjust the version number accordingly.
 
-```
+```bash
 # Example Dataset
 # ---------------
-python test.py ./spanet_output/version_0 -tf ./data/ttbar/ttbar_example.h5 --gpu
+python test.py ./spanet_output/version_0 -tf data/full_hadronic_ttbar/example.h5 --gpu
 
 # Full Dataset
 # ------------
-python test.py ./spanet_output/version_0 -tf ./data/ttbar/ttbar_testing.h5 --gpu
+python test.py ./spanet_output/version_0 -tf data/full_hadronic_ttbar/testing.h5 --gpu
 ```
 
 Next we will output all SPANet predictions on a set of events
 in order to analyze them further, simply run `predict.py` as follows.
 
-```
+```bash
 # Example Dataset
 # ---------------
-python predict.py  ./spanet_output/version_0 ./spanet_ttbar_example_output.h5 -tf ./data/ttbar/ttbar_example.h5 --gpu`
+python predict.py  ./spanet_output/version_0 ./spanet_ttbar_example_output.h5 -tf data/full_hadronic_ttbar/example.h5 --gpu
 
 # Full Dataset
 # ------------
-python predict.py  ./spanet_output/version_0 ./spanet_ttbar_testing_output.h5 -tf ./data/ttbar/ttbar_testing.h5 --gpu
+python predict.py  ./spanet_output/version_0 ./spanet_ttbar_testing_output.h5 -tf data/full_hadronic_ttbar/testing.h5 --gpu
 ```
 
 This will create a new HDF5 File named `spanet_ttbar_output.h5` with the same
@@ -96,37 +98,80 @@ structure as the testing dataset except with the jet labels replaced
 with the SPANet predictions. This can now be read in as a regular HDF5 
 in order to perform other experiments.
 
-## Event `.ini` File
+## Event `.yaml` File
 We will now go over how the `ttbar` example configuration works.
 
 Included is the event description for a full hadronic-decay `ttbar` event.
-This file is located at [`event_files/ttbar.ini`](../event_files/old/ttbar.ini).
-We will also reproduce it here for simplicity.
+This file is located at [`event_files/full_hadronic_ttbar.yaml`](../event_files/full_hadronic_ttbar.yaml).
+We will also reproduce it here for simplicity. Any `CAPITAL_CASE` keys are special keys that cannot be used by any other element of the tree. They must always be `CAPITAL_CASE`. 
 
+```yaml
+# ---------------------------------------------------
+# REQUIRED - INPUTS - List all inputs to SPANet here.
+# ---------------------------------------------------
+INPUTS:
+  # -----------------------------------------------------------------------------
+  # REQUIRED - SEQUENTIAL - inputs which can have an arbitrary number of vectors.
+  # -----------------------------------------------------------------------------
+  SEQUENTIAL:
+    Source:
+      mass: log_normalize
+      pt: log_normalize
+      eta: normalize
+      phi: normalize
+      btag: none
+
+  # ---------------------------------------------------------------------
+  # REQUIRED - GLOBAL - inputs which will have a single vector per event.
+  # ---------------------------------------------------------------------
+  GLOBAL:
+
+
+# ----------------------------------------------------------------------
+# REQUIRED - EVENT - Complete list of resonance particles and daughters.
+# ----------------------------------------------------------------------
+EVENT:
+  t1:
+    - q1
+    - q2
+    - b
+  t2:
+    - q1
+    - q2
+    - b
+
+# ---------------------------------------------------------
+# REQUIRED KEY - PERMUTATIONS - List of valid permutations.
+# ---------------------------------------------------------
+PERMUTATIONS:
+    EVENT:
+      - [ t1, t2 ]
+    t1:
+      - [ q1, q2 ]
+    t2:
+      - [ q1, q2 ]
+
+
+# ------------------------------------------------------------------------------
+# REQUIRED - REGRESSIONS - List of desired features to regress from observables.
+# ------------------------------------------------------------------------------
+REGRESSIONS:
+
+
+# -----------------------------------------------------------------------------
+# REQUIRED - REGRESSIONS - List of desired classes to predict from observables.
+# -----------------------------------------------------------------------------
+CLASSIFICATIONS:
 ```
-[SOURCE]
-mass = log_normalize
-pt = log_normalize
-eta = normalize
-phi = normalize
-btag = none
 
-[EVENT]
-particles = (t1, t2)
-permutations = [(t1, t2)]
+### `INPUTS`
+The Inputs section of the `.yaml` file defines which features are present in our dataset which the network will use to make predictions.
 
-[t1]
-jets = (q1, q2, b)
-permutations = [(q1, q2)]
-
-[t2]
-jets = (q1, q2, b)
-permutations = [(q1, q2)]
+```yaml
+SEQUENTIAL:
+    Source:
 ```
-
-### `[SOURCE]`
-This section of the `.ini` file defines which features are present in our dataset.
-You will notice that we define five unique features.
+This defines a sequential (variable length) input named `Source`. This will contain the observable features for our hadronic jets. You will notice that we define five unique features.
 - `mass`
 - `pt`
 - `eta`
@@ -138,68 +183,59 @@ This is the information that we store for each jet. Also notice that we
 range of possible values, normalize the `eta` and `phi` features for consistency,
 and dont do anything with `btag` because it is already binary valued.
 
-### `[EVENT]`
-This section defines that our event has two particles which we are interested in
-`t1` and `t2`. Furthermore, although in reality these particles should be a top 
-quark and a top anti-quark, we are not differentiating the particles with respect 
-to their charge. Therefore, we also note that `(t1, t2)` is a valid permutation to
-apply to our targets, making the ordering of `t1` and `t2` arbitrary.
+### `EVENT`
+This section defines that Feynman diagram structure of our event. We have two **event particles** which we are interested in `t1` and `t2`. Each top quark / anti-quark decay into three jets: two light quarks `q1` and `q2` and a bottom quark `b`. These final jets are observable and so they belong in the second stage of diagram. We currently only support depth two Feynman diagrams. The first stage should be the particles we are interested in studying, and the second the observable decay products.
 
-### Jet Definitions
-```
-[t1]
-jets = (q1, q2, b)
-permutations = [(q1, q2)]
+### `PERMUTATIONS`
+This is where we may define invariant symmetries for our assignment reconstruction.
 
-[t2]
-jets = (q1, q2, b)
-permutations = [(q1, q2)]
-```
+Although in reality the event particles should be a top quark and a top anti-quark, we are not differentiating the particles with respect to their charge. Therefore, we set `(t1, t2)` to be a valid permutation of the event particles, making the ordering of `t1` and `t2` arbitrary. We also tell SPANet that the particular ordering of `q1` and `q2` jets within each top doesn't matter with an additional `(q1, q2)` permutation for each top quark.
 
-These sections define that each top quark / anti-quark decay into three jets:
-two light quarks `q1` and `q2` and a bottom quark `b`. Also notice that
-we also tell SPANet that the particular ordering of `q1` and `q2` doesn't matter
-similar to the `[EVENT]` section.
+### `REGRESSIONS` and `CLASSIFICATIONS`
+This section allows us to define custom per-event, per-particle, and per-decay product regressions and classifications. This is still an experimental feature and not used for `ttbar`.
+
 
 ## `ttbar` Example Dataset
 We provide in this repository a small example file which countains ~10,000
 `ttbar` events to demonstrate the dataset structure. This file is located in
-`data/ttbar/ttbar_example.h5`.
+`data/full_hadronic_ttbar/example.h5`.
 
-Examining the HDF5 file, it has the following structure
+You can example HDF5 file structure with the following command: ``
+```bash
+$ python utils/examine_hdf5.py data/full_hadronic_ttbar/example.h5 --shape
+
+============================================================
+| Structure: data/full_hadronic_ttbar/example.h5
+============================================================
+
+|-INPUTS
+|---Source
+|-----MASK                       :: bool     : (10000, 10)
+|-----btag                       :: float32  : (10000, 10)
+|-----eta                        :: float32  : (10000, 10)
+|-----mass                       :: float32  : (10000, 10)
+|-----phi                        :: float32  : (10000, 10)
+|-----pt                         :: float32  : (10000, 10)
+|-TARGETS
+|---t1
+|-----b                          :: int64    : (10000,)
+|-----q1                         :: int64    : (10000,)
+|-----q2                         :: int64    : (10000,)
+|---t2
+|-----b                          :: int64    : (10000,)
+|-----q1                         :: int64    : (10000,)
+|-----q2                         :: int64    : (10000,)
 ```
-- source
----- mask
----- mass
----- pt
----- eta
----- phi
----- btag
 
-- t1
----- mask
----- q1
----- q2
----- b
-
-- t2
----- mask
----- q1
----- q2
----- b
-```
-
-You will notice that all the source feature names, the particle names, and 
-the jet names correspond precisely to our event definition in `ttbar.ini`.
+You will notice that all the source feature names, the event particle names, and 
+the decay product names correspond precisely to our event definition in `full_hadronic_ttbar.yaml`.
 
 The example dataset contains `10,000` `ttbar` events with a maximum jet
 multiplicity of `10`. The source features are float arrays of size 
 `[10,000, 10]` because each jet has every feature assigned to it.
 Not every event has all `10` jets, so any extra jets assigned to an event
-are known as padding and all have feature values of 0. The `source/mask` array keeps track of which jets are real and which are
+are known as padding and all have feature values of 0. The `INPUTS/Source/MASK` array keeps track of which jets are real and which are
 padding jets.
 
 The particle groups contain the indices of each jet associated with each particle.
-Each array in these groups is an integer array of size `[10,000]`. The
-`t1/mask` and `t2/mask` arrays determine if the particle is fully reconstructable
-in the given event.
+Each array in these groups is an integer array of size `[10,000]`. Any jets which are missing from the event are marked with a `-1` value in the corresponding target array.

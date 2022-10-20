@@ -1,46 +1,97 @@
-# Event Specification Format
+# Event Specification Format V2
 
 The first step to training SPANets is to define the 
 topology of your target event. To do this, `SPANet` 
-uses a definition `.ini` file which contains the features
-and jet information for your event.
+uses a definition `.yaml` file which contains the features
+and jet information for your event. This will describe both the
+inputs and outputs for your model, along with any related symmetries.
 
-The structure of the `.ini` file always follows this format:
+The structure of the `.yaml` file will follows a standard format.
+Special keys which must be exactly as shown will be in `CAPITALCASE`.
+Custom keys which may modified for your event will be in `lower_case_with_underscores`
 ```
-[SOURCE]
-FEATURE_1 = FEATURE_OPTION
-FEATURE_2 = FEATURE_OPTION
-FEATURE_3 = FEATURE_OPTION
-...
+INPUTS:
+    SEQUENTIAL:
+        sequential_input_1:
+            feature_1: feature_option_1
+            feature_2: feature_option_2
+            feature_3: feature_option_3
+            ...
+            
+        sequential_input_2:
+            feature_1: feature_option_1
+            feature_2: feature_option_2
+            feature_3: feature_option_3
+            ...
+        ...
+        
+    GLOBAL:
+        global_input_1:
+            feature_1: feature_option_1
+            feature_2: feature_option_2
+            feature_3: feature_option_3
+            ...
+        ...
+        
+EVENT:
+    event_particle_1:
+        - decay_product_1
+        - decay_product_2
+        ...
+        
+    event_particle_2:
+        - decay_product_1
+        - decay_product_2
+        ...
+    
+    ...
 
-[EVENT]
-particles = (PARTICLE_1, PARTICLE_2, ...)
-permutations = EVENT_SYMMETRY_GROUP
+PERMUTATIONS:
+    EVENT:
+        - [ event_particle, event_particle ]
+        ...
+        
+    event_particle_1:
+        - [ decay_product, decay_product ]
+        ...
+        
+    event_particle_2:
+        - [ decay_product, decay_product ]
+        ...
+    ...
+   
+REGRESSIONS:
+    ... (Explained Later)
 
-[PARTICLE_1]
-jets = (JET_1, JET_2, ...)
-permutations = JET_SYMMETRY_GROUP
-
-[PARTICLE_2]
-jets = (JET_1, JET_2, ...)
-permutations = JET_SYMMETRY_GROUP
-
-...
+CLASSIFICATIONS:
+    ... (Explained Later)
 ```
 
-We will now go over each of the capitalized options to explain what
-they can represent. You may also view an example of a complete ini file
-in [`ttbar.ini`](../event_files/old/ttbar.ini).
+We will now go over each of the sections to explain what must be included. 
+You may also view an example of a complete event file
+in [`ttbar.yaml`](../event_files/full_hadronic_ttbar.yaml).
 
-## SOURCE
-One of the two **required** headers is `[SOURCE]` which will contain
-all the features that you want to use during training.
-Simply give each feature a unique name, since they will later be
+## `INPUTS`
+The first **reuquired** section. 
+Inputs will contain a description of the features
+that will be fed in as input to SPANet.
+
+There are two types of inputs:
+- **SEQUENTIAL** inputs represent variable length inputs for each event.
+  These may include objects such as hadronic jets, leptons, neutrinos, etc.
+- **GLOBAL** inputs represent features which exist for the entire event.
+  There exists only a single instance of the inputs for every event.
+  Examples include neutrino missing energy.
+
+Each input should have a unique name. They will later be
 used in how you define your dataset. The exact names are not important
 as long as they are unique.
 
-the `FEATURE_OPTION` defines how you want `SPANet` to pre-process the
-given features. Valid options include:
+Each input contains one or more *features*. These are the observable values
+associated with each input. Each feature is also given a unique name
+which will be used when creating the dataset. Each feature
+can have association several options which define how `SPANet`
+will pre-process the feature. Valid options include:
 
 | FEATURE_OPTION     | Description |
 | :--------------:   | ----------- |
@@ -49,75 +100,66 @@ given features. Valid options include:
 | `normalize`        | Normalize the feature based on training dataset statistics |
 | `log_normalize`    | First apply a `log` scale and then normalize |
 
-## EVENT
-The second **required** header. This will contain all the event
-particle and symmetry information. We define "particles" to be
-the collections of jets that you are interested in predicting.
+## `EVENT`
+The second **required** section. This will contain a simplified
+Feynman diagram of your event. We require that events processed by SPANet
+follow a particular two-level structure. We split the event into
+1. **Event Particles:** The first level of the Feynmen Diagram.
+   These are typically non-observable particles which we are interested 
+   in studying. These particles are required to decay into other particles.
+2. **Decay Products:** The second level will contain observable decay products.
+   These are required to be particles which will have reconstruction targets
+   associated with them.
 
---------------------------------------------
-`particles = (PARTICLE_1, PARTICLE_2, ...)`
+We describe this Feynman diagram structure with a simple two layer tree.
+Give each event particle a unique name.
+Decay particles may repeat names as long as they belong to different event particles.
 
-This line defines the set of particles that will be present in your event.
-Like with the features, the names you give these particles is arbitrary,
-so just make sure they are unique.
-
------------------------------------
-`permutations = EVENT_SYMMETRY_GROUP`
-
-See [Symmetry Group Description](#Symmetry-Group-Description).
-
-----------------------------
-
-## Particle Definitions
-The remaining headers in the ini file must be named on of the particles
-that you defined in the `[EVENT]` section. Each of these sections will
-then contain the jet names and their respective jet symmetry groups.
-
---------------
-`[PARTICLE_1]`
-
-The header with a matching name to one of the particles defined in `[EVENT]`
-
-----------------------------
-`jets = (JET_1, JET_2, ...)`
-
-A set of jet names assigned to this particle. The names have to be unique
-within a given particle, but they do not need to be unique
-across different particles.
-
-----------------------------
-`permutations = JET_SYMMETRY_GROUP`
-
-Again, see [Symmetry Group Description](#Symmetry-Group-Description).
-
-----------------------------
+## `PERMUTATIONS`
+Describe the symmetries allowed in during assignment. You may specify an 
+event-level symmetry group over event particles with the special keyword.
+```
+EVENT:
+    - [ event_particle, event_particle ]
+    ...
+```
+Decay product symmetry groups may be specicied with their associated
+event particle name.
+```
+event_particle_1:
+    - [ decay_product, decay_product ]
+    ...
+```
 
 
-## Symmetry Group Description
-
-For now, we only support describing permutation groups as products
+SPANet supports describing permutation groups as products
 of complete symmetry goups G = S_1 x S_2 x ...
 
 In order to define these permutation groups, you simply describe which
 particles or jets belong to each of the fully symmetric groups. This is
-expressed as a list of tuples each of which contain the names of the
+expressed as a list of lists each of which contain the names of the
 connected particles or jets
 
 For example
-` [(PARTICLE_1, PARTICLE_2), (PARTICLE_3, PARTICLE_4)] ` will define an
-event symmetric group where the first two particles are interchangeable, 
-and the last two particles are interchangeable.
+```
+EVENT:
+    - [ event_particle_1, event_particle_2 ]
+    - [ event_particle_3, event_particle_4 ]
+```
+will define an event symmetric group where the 
+first two particles are interchangeable, and the 
+last two particles are interchangeable.
 
 Any groupings of three or more particles will mean that **ALL** of the
 particles are symmetric with each other. Any elements not present in the 
 permtuations description will be assumed to be invariant with only iteself.
 
 For example, using the same four particles as above
-` [(PARTICLE_1, PARTICLE_2, PARTICLE_3)] `
+` [event_particle_1, event_particle_2, event_particle_3] `
 defines a group with the first three particles are completely invariant
-with respect to each other but the final particle `PARTICLE_4` is 
+with respect to each other but the final particle `event_particle_4` is 
 invariant with nothing.
 
 ## Example
 Refer to the Event File section of the [`ttbar` Example Guide](TTBar.md) for a
-description of the `ttbar.ini` example event file.
+description of the `ttbar.yaml` example event file.
