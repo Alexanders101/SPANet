@@ -12,6 +12,12 @@ We recently pushed an updated version 2 of this library which adds several new f
 3. New Regression and Classification output heads for performing per-event or per-particle predictions.
 4. Gated transformers and linear layers for more robust networks. Less hyperparameter optimization.
 
+### Note
+The configuration `ini` has been deprecated into a configuration `yaml`. The conversion should just be to change the syntax a bit, the values should remain the same. A conversion script is in the works.
+
+The dataset format has also changed slighty, but old style datasets can be converted into a new style dataset using [`utils/convert_dataset.py`](utils/convert_dataset.py).
+
+The old codebase may always be accesed here: [https://github.com/Alexanders101/SPANet/tree/v1.0](https://github.com/Alexanders101/SPANet/tree/v1.0)
 
 ## Dependencies
 
