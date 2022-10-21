@@ -8,7 +8,7 @@ import numpy as np
 
 from spanet import JetReconstructionModel
 from spanet.dataset.evaluator import SymmetricEvaluator, EventInfo
-from spanet.evaluation import predict_on_test_dataset, load_model
+from spanet.evaluation import evaluate_on_test_dataset, load_model
 
 
 def formatter(value: Any) -> str:
@@ -25,6 +25,17 @@ def formatter(value: Any) -> str:
         return "N/A"
 
     return "{:.3f}".format(value)
+
+
+def transpose_columns(columns):
+    header = list(columns.keys())
+    num_rows = len(columns[header[0]])
+
+    output = [header]
+    for row in range(num_rows):
+        output.append([columns[col][row] for col in header])
+
+    return output
 
 
 # Table function taken from here:
@@ -104,37 +115,60 @@ def create_table(table: dict, full_row: bool = False, event_type: str = None) ->
     stdout.flush()
 
 
-def evaluate_model(model: JetReconstructionModel, cuda: bool = False):
-    predictions, _, targets, masks, num_jets = predict_on_test_dataset(model, cuda)
+def display_latex_table(results: Dict[str, Any], jet_limits: List[str], clusters: List[str]):
+    columns = " ".join("c" * len(clusters))
+    print(r"\begin{tabular}{c | c | c c | c " + columns + "}")
+    print(r"\hline")
+    print(r"\hline")
+    print(r"& $N_\mathrm{jets}$ & Event Proportion  & Jet Proportion & Event Purity & ", end="")
+    HEADER_PRINTED = False
 
-    event_info = EventInfo.read_from_ini(model.options.event_info_file)
-    evaluator = SymmetricEvaluator(event_info)
+    event_types = set(map(lambda x: x.split("/")[0], filter(lambda x: "/" in x, next(iter(results.values())))))
+    for event_type in sorted(event_types):
+        if "0" in event_type:
+            continue
 
-    minimum_jet_count = num_jets.min()
-    jet_limits = [f"== {minimum_jet_count}",
-                  f"== {minimum_jet_count + 1}",
-                  f">= {minimum_jet_count + 2}",
-                  None]
+        columns = defaultdict(list)
+        for jet_limit in jet_limits:
+            particle_keys = [key.split("/")[1] for key in results[jet_limit] if
+                             event_type in key and "event" not in key]
 
-    results = {}
-    for jet_limit_name in jet_limits:
-        limited_predictions = predictions
-        limited_targets = targets
-        limited_masks = masks
+            columns["Jet Limit"].append(jet_limit)
+            columns["Event Proportion"].append(results[jet_limit][f"{event_type}/event_proportion"])
+            columns["Jet Proportion"].append(results[jet_limit][f"event_jet_proportion"])
+            columns["Event Purity"].append(results[jet_limit][f"{event_type}/event_purity"])
+            for particle_key in sorted(particle_keys):
+                name = ' '.join(map(str.capitalize, particle_key.split("_")))
+                columns[name].append(results[jet_limit][f"{event_type}/{particle_key}"])
 
-        if jet_limit_name is not None:
-            jet_limit = eval("num_jets {}".format(jet_limit_name))
-            limited_predictions = [p[jet_limit] for p in limited_predictions]
-            limited_targets = [t[jet_limit] for t in limited_targets]
-            limited_masks = [m[jet_limit] for m in limited_masks]
+        rows = transpose_columns(columns)
+        rows = [[formatter(val) for val in row] for row in rows]
 
-        results[jet_limit_name] = evaluator.full_report_string(limited_predictions, limited_targets, limited_masks)
-        results[jet_limit_name]["event_jet_proportion"] = 1.0 if jet_limit_name is None else jet_limit.mean()
+        if not HEADER_PRINTED:
+            header = " & ".join(rows[0][4:])
+            print(header + r"\\")
+            HEADER_PRINTED = True
 
-    return results, jet_limits
+        print(r"\hline")
+        for row_number, row in enumerate(rows[1:]):
+            event_name = event_type
+            if row_number == len(rows) - 2:
+                row = [r"\textbf{" + v + "}" for v in row]
+                event_name = r"\textbf{" + event_name + "}"
+
+            row_string = " & ".join(row)
+            row_string = "&" + row_string + r"\\"
+            if row_number == 0:
+                row_string = event_name + row_string
+
+            print(row_string)
+        print(r"\hline")
+
+    print(r"\hline")
+    print(r"\end{tabular}")
 
 
-def display_table(results: Dict[str, Any], jet_limits: List[str]):
+def display_table(results: Dict[str, Any], jet_limits: List[str], clusters: List[str]):
     event_types = set(map(lambda x: x.split("/")[0], filter(lambda x: "/" in x, next(iter(results.values())))))
     for event_type in sorted(event_types):
         columns = defaultdict(list)
@@ -154,14 +188,56 @@ def display_table(results: Dict[str, Any], jet_limits: List[str]):
         print()
 
 
-def main(log_directory: str,
-         test_file: Optional[str],
-         event_file: Optional[str],
-         batch_size: Optional[int],
-         gpu: bool):
+def evaluate_model(model: JetReconstructionModel, lines: int):
+    evaluation = evaluate_on_test_dataset(model)
+    evaluator = SymmetricEvaluator(model.event_info)
+
+    # Flatten predictions
+    predictions = list(evaluation.assignments.values())
+    num_vectors = model.testing_dataset.num_vectors.cpu().numpy()
+
+    # Flatten targets and convert to numpy
+    targets = [assignment[0].cpu().numpy() for assignment in model.testing_dataset.assignments.values()]
+    masks = [assignment[1].cpu().numpy() for assignment in model.testing_dataset.assignments.values()]
+
+    minimum_jet_count = num_vectors.min()
+    jet_limits = [f"== {minimum_jet_count + i}" for i in range(lines)]
+    jet_limits.append(f">= {minimum_jet_count + lines}")
+    jet_limits.append(None)
+
+    results = {}
+    for jet_limit_name in jet_limits:
+        limited_predictions = predictions
+        limited_targets = targets
+        limited_masks = masks
+
+        if jet_limit_name is not None:
+            jet_limit = eval("num_vectors {}".format(jet_limit_name))
+            limited_predictions = [p[jet_limit] for p in limited_predictions]
+            limited_targets = [t[jet_limit] for t in limited_targets]
+            limited_masks = [m[jet_limit] for m in limited_masks]
+
+        results[jet_limit_name] = evaluator.full_report_string(limited_predictions, limited_targets, limited_masks)
+        results[jet_limit_name]["event_jet_proportion"] = 1.0 if jet_limit_name is None else jet_limit.mean()
+
+    return results, jet_limits, evaluator.clusters
+
+
+def main(
+    log_directory: str,
+    test_file: Optional[str],
+    event_file: Optional[str],
+    batch_size: Optional[int],
+    lines: int,
+    gpu: bool,
+    latex: bool
+):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
-    results, jet_limits = evaluate_model(model, gpu)
-    display_table(results, jet_limits)
+    results, jet_limits, clusters = evaluate_model(model, lines)
+    if latex:
+        display_latex_table(results, jet_limits, clusters)
+    else:
+        display_table(results, jet_limits, clusters)
 
 
 if __name__ == '__main__':
@@ -179,8 +255,15 @@ if __name__ == '__main__':
     parser.add_argument("-bs", "--batch_size", type=int, default=None,
                         help="Replace the batch size in the options with a custom size.")
 
+    parser.add_argument("-l", "--lines", type=int, default=2,
+                        help="Number of equality lines to print for every event. "
+                             "Will group other events into a >= group.")
+
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="Evaluate network on the gpu.")
+
+    parser.add_argument("-tex", "--latex", action="store_true",
+                        help="Output a latex table.")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)

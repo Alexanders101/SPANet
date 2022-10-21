@@ -1,0 +1,30 @@
+channels:
+  - pytorch
+  - conda-forge
+
+dependencies:
+  - python=3.9.*
+  - conda
+  - pip
+
+  - numpy
+  - sympy
+  - scikit-learn
+  - numba
+  - opt_einsum
+  - h5py
+  - cytoolz
+
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cudatoolkit=11.3
+  - cuda-nvcc
+  - pytorch-lightning
+
+  - jupyterlab
+  - seaborn
+  - rich
+
+  - pip:
+      - fairscale

@@ -1,20 +1,24 @@
-from typing import Tuple
-
 import numpy as np
 import torch
-from torch import Tensor, nn
+from torch import nn
 
-from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
-from spanet.network.prediction_selection import extract_predictions
-from spanet.network.layers.branch_decoder import BranchDecoder
-from spanet.network.layers.jet_encoder import JetEncoder
 from spanet.options import Options
+from spanet.dataset.types import Tuple, Outputs, Source, Predictions
+
+from spanet.network.layers.vector_encoder import JetEncoder
+from spanet.network.layers.branch_decoder import BranchDecoder
+from spanet.network.layers.embedding import MultiInputVectorEmbedding
+from spanet.network.layers.regression_decoder import RegressionDecoder
+from spanet.network.layers.classification_decoder import ClassificationDecoder
+
+from spanet.network.prediction_selection import extract_predictions
+from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
 
 TArray = np.ndarray
 
 
 class JetReconstructionNetwork(JetReconstructionBase):
-    def __init__(self, options: Options):
+    def __init__(self, options: Options, torch_script: bool = False):
         """ Base class defining the SPANet architecture.
 
         Parameters
@@ -25,69 +29,144 @@ class JetReconstructionNetwork(JetReconstructionBase):
         """
         super(JetReconstructionNetwork, self).__init__(options)
 
+        compile_module = torch.jit.script if torch_script else lambda x: x
+
         self.hidden_dim = options.hidden_dim
 
-        # Shared options for all transformer layers
-        transformer_options = (options.hidden_dim,
-                               options.num_attention_heads,
-                               options.hidden_dim,
-                               options.dropout,
-                               options.transformer_activation)
+        self.embedding = compile_module(MultiInputVectorEmbedding(
+            options,
+            self.training_dataset
+        ))
 
-        self.encoder = JetEncoder(options, self.training_dataset.num_features, transformer_options)
-        self.decoders = nn.ModuleList([
-            BranchDecoder(options, size, permutation_indices, transformer_options, self.enable_softmax)
-            for _, (size, permutation_indices) in self.training_dataset.target_symmetries
+        self.encoder = compile_module(JetEncoder(
+            options,
+        ))
+
+        self.branch_decoders = nn.ModuleList([
+            BranchDecoder(
+                options,
+                event_particle_name,
+                self.event_info.product_particles[event_particle_name].names,
+                product_symmetry,
+                self.enable_softmax
+            )
+            for event_particle_name, product_symmetry
+            in self.event_info.product_symmetries.items()
         ])
 
+        self.regression_decoder = compile_module(RegressionDecoder(
+            options,
+            self.training_dataset
+        ))
+
+        self.classification_decoder = compile_module(ClassificationDecoder(
+            options,
+            self.training_dataset
+        ))
+
         # An example input for generating the network's graph, batch size of 2
-        self.example_input_array = tuple(x.contiguous() for x in self.training_dataset[:2][0])
+        # self.example_input_array = tuple(x.contiguous() for x in self.training_dataset[:2][0])
 
     @property
     def enable_softmax(self):
         return True
 
-    def forward(self, source_data: Tensor, source_mask: Tensor) -> Tuple[Tuple[Tensor, Tensor], ...]:
-        # Normalize incoming data
-        # This operation is gradient-free, so we can use inplace operations.
-        source_data = source_data.clone()
-        source_data[source_mask] -= self.mean
-        source_data[source_mask] /= self.std
+    def forward(self, sources: Tuple[Source, ...]) -> Outputs:
+        # Embed all of the different input regression_vectors into the same latent space.
+        embeddings, padding_masks, sequence_masks, global_masks = self.embedding(sources)
 
         # Extract features from data using transformer
-        hidden, padding_mask, sequence_mask = self.encoder(source_data, source_mask)
+        hidden, event_vector = self.encoder(embeddings, padding_masks, sequence_masks)
+
+        # Create output lists for each particle in event.
+        assignments = []
+        detections = []
+
+        encoded_vectors = {
+            "EVENT": event_vector
+        }
 
         # Pass the shared hidden state to every decoder branch
-        return tuple(decoder(hidden, padding_mask, sequence_mask) for decoder in self.decoders)
+        for decoder in self.branch_decoders:
+            (
+                assignment,
+                detection,
+                assignment_mask,
+                event_particle_vector,
+                product_particle_vectors
+            ) = decoder(hidden, padding_masks, sequence_masks, global_masks)
 
-    def predict_jets(self, source_data: Tensor, source_mask: Tensor) -> np.ndarray:
+            assignments.append(assignment)
+            detections.append(detection)
+
+            # Assign the summarising vectors to their correct structure.
+            encoded_vectors["/".join([decoder.particle_name, "PARTICLE"])] = event_particle_vector
+            for product_name, product_vector in zip(decoder.product_names, product_particle_vectors):
+                encoded_vectors["/".join([decoder.particle_name, product_name])] = product_vector
+
+        # Predict the valid regressions for any real values associated with the event.
+        regressions = self.regression_decoder(encoded_vectors)
+
+        # Predict additional classification targets for any branch of the event.
+        classifications = self.classification_decoder(encoded_vectors)
+
+        return Outputs(
+            assignments,
+            detections,
+            regressions,
+            classifications
+        )
+
+    def predict(self, sources: Tuple[Source, ...]) -> Predictions:
+        with torch.no_grad():
+            assignments, detections, regressions, classifications = self.forward(sources)
+
+            # Extract assignment probabilities and find the least conflicting assignment.
+            assignments = extract_predictions([
+                np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)
+                for assignment in assignments
+            ])
+
+            # Convert detection logits into probabilities and move to CPU.
+            detections = np.stack([
+                torch.sigmoid(detection).cpu().numpy()
+                for detection in detections
+            ])
+
+            # Move regressions to CPU and away from torch.
+            regressions = {
+                key: value.cpu().numpy()
+                for key, value in regressions.items()
+            }
+
+            classifications = {
+                key: value.cpu().argmax(1).numpy()
+                for key, value in classifications.items()
+            }
+
+        return Predictions(
+            assignments,
+            detections,
+            regressions,
+            classifications
+        )
+
+    def predict_assignments(self, sources: Tuple[Source, ...]) -> np.ndarray:
         # Run the base prediction step
         with torch.no_grad():
-            predictions = []
-            for prediction, _, _ in self.forward(source_data, source_mask):
-                prediction[torch.isnan(prediction)] = -np.inf
-                predictions.append(prediction)
+            assignments = [
+                np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)
+                for assignment in self.forward(sources)[0]
+            ]
 
-            # Find the optimal selection of jets from the output distributions.
-            return extract_predictions(predictions)
+        # Find the optimal selection of jets from the output distributions.
+        return extract_predictions(assignments)
 
-    def predict_jets_and_particle_scores(self, source_data: Tensor, source_mask: Tensor) -> Tuple[TArray, TArray]:
-        with torch.no_grad():
-            predictions = []
-            scores = []
-            for prediction, classification, _ in self.forward(source_data, source_mask):
-                prediction[torch.isnan(prediction)] = -np.inf
-                predictions.append(prediction)
-
-                scores.append(torch.sigmoid(classification).cpu().numpy())
-
-            return extract_predictions(predictions), np.stack(scores)
-
-    def predict_jets_and_particles(self, source_data: Tensor, source_mask: Tensor) -> Tuple[TArray, TArray]:
-        predictions, scores = self.predict_jets_and_particle_scores(source_data, source_mask)
+    def predict_assignments_and_detections(self, sources: Tuple[Source, ...]) -> Tuple[TArray, TArray]:
+        assignments, detections, regressions, classifications = self.predict(sources)
 
         # Always predict the particle exists if we didn't train on it
-        if self.options.classification_loss_scale == 0:
-            scores += 1
+        if self.options.detection_loss_scale == 0:
+            detections += 1
 
-        return predictions, scores >= 0.5
+        return assignments, detections >= 0.5

@@ -5,23 +5,58 @@ from numpy import ndarray as Array
 import h5py
 
 from spanet.dataset.jet_reconstruction_dataset import JetReconstructionDataset
-from spanet.evaluation import predict_on_test_dataset, load_model
+from spanet.dataset.types import Evaluation, SpecialKey
+from spanet.evaluation import evaluate_on_test_dataset, load_model
 
 
-def create_hdf5_output(output_file: str,
-                       dataset: JetReconstructionDataset,
-                       full_predictions: Array,
-                       full_classifications: Array):
+def create_hdf5_output(
+    output_file: str,
+    dataset: JetReconstructionDataset,
+    evaluation: Evaluation
+):
     print(f"Creating output file at: {output_file}")
     with h5py.File(output_file, 'w') as output:
-        output.create_dataset(f"source/mask", data=dataset.source_mask)
-        for i, (feature_name, _, _) in enumerate(dataset.event_info.source_features):
-            output.create_dataset(f"source/{feature_name}", data=dataset.source_data[:, :, i])
+        # Copy over the source features from the input file.
+        with h5py.File(dataset.data_file, 'r') as input_dataset:
+            for input_name in input_dataset[SpecialKey.Inputs]:
+                for feature_name in input_dataset[SpecialKey.Inputs][input_name]:
+                    output.create_dataset(
+                        f"{SpecialKey.Inputs}/{input_name}/{feature_name}",
+                        data=input_dataset[SpecialKey.Inputs][input_name][feature_name]
+                    )
 
-        for i, (particle_name, (jets, _)) in enumerate(dataset.event_info.targets.items()):
-            output.create_dataset(f"{particle_name}/mask", data=full_classifications[i])
-            for k, jet_name in enumerate(jets):
-                output.create_dataset(f"{particle_name}/{jet_name}", data=full_predictions[i][:, k])
+        # Construct the assignment structure. Output both the top assignment and associated probabilities.
+        for event_particle in dataset.event_info.event_particles:
+            for i, product_particle in enumerate(dataset.event_info.product_particles[event_particle]):
+                output.create_dataset(
+                    f"{SpecialKey.Targets}/{event_particle}/{product_particle}",
+                    data=evaluation.assignments[event_particle][:, i]
+                )
+
+            output.create_dataset(
+                f"{SpecialKey.Targets}/{event_particle}/assignment_probability",
+                data=evaluation.assignment_probabilities[event_particle]
+            )
+
+            output.create_dataset(
+                f"{SpecialKey.Targets}/{event_particle}/detection_probability",
+                data=evaluation.detection_probabilities[event_particle]
+            )
+
+            output.create_dataset(
+                f"{SpecialKey.Targets}/{event_particle}/marginal_probability",
+                data=(
+                    evaluation.detection_probabilities[event_particle] *
+                    evaluation.assignment_probabilities[event_particle]
+                )
+            )
+
+        # Simply copy over the structure of the regressions and classifications.
+        for name, regression in evaluation.regressions.items():
+            output.create_dataset(f"{SpecialKey.Regressions}/{name}", data=regression)
+
+        for name, classification in evaluation.classifications.items():
+            output.create_dataset(f"{SpecialKey.Classifications}/{name}", data=classification)
 
 
 def main(log_directory: str,
@@ -32,8 +67,8 @@ def main(log_directory: str,
          gpu: bool):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
 
-    full_predictions, full_classifications, *_ = predict_on_test_dataset(model, gpu)
-    create_hdf5_output(output_file, model.testing_dataset, full_predictions, full_classifications)
+    evaluation = evaluate_on_test_dataset(model)
+    create_hdf5_output(output_file, model.testing_dataset, evaluation)
 
 
 if __name__ == '__main__':

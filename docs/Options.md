@@ -41,6 +41,3 @@ using `python train.py --help`. Some common ones include:
 - `--epochs N` to set the number of training epochs.
 - `--log_dir DIR` to set the output directory to something different from the current directory.
 - `--name NAME` to set the log directory name to something differnt than `lightning_logs`.
-
-## Complete Options Listing
-TODO

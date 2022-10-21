@@ -13,8 +13,17 @@ class Options(Namespace):
         # Dimensions used internally by all hidden layers / transformers.
         self.hidden_dim: int = 128
 
+        # Internal dimensions used during transformer and some linear layers.
+        self.transformer_dim: int = 128
+
+        # Internal dimensions used during transformer and some linear layers.
+        # Scalar variant, muiltiply the input dim by this amount.
+        self.transformer_dim_scale: float = 2.0
+
         # Hidden dimensionality of the first embedding layer.
         self.initial_embedding_dim: int = 16
+
+        self.position_embedding_dim: int = 32
 
         # Maximum Number of double-sized embedding layers to add between the features and the encoder.
         # The size of the embedding dimension will be capped at the hidden_dim,
@@ -43,7 +52,13 @@ class Options(Namespace):
         self.num_jet_encoder_layers: int = 0
 
         # Number of hidden layers to use for the particle classification head.
-        self.num_branch_classification_layers: int = 1
+        self.num_detector_layers: int = 1
+
+        # Number of hidden layers to use for the particle classification head.
+        self.num_regression_layers: int = 1
+
+        # Number of hidden layers to use for the particle classification head.
+        self.num_classification_layers: int = 1
 
         # Whether or not to use a split approximate tensor attention layer.
         self.split_symmetric_attention: bool = True
@@ -54,23 +69,70 @@ class Options(Namespace):
         # Activation function for all transformer layers, 'relu' or 'gelu'.
         self.transformer_activation: str = 'gelu'
 
-        # Whether or not to use PreLU activation on linear / embedding layers,
-        # Otherwise a regular relu will be used.
-        self.linear_prelu_activation: bool = True
-
-        # Whether or not to add skip connections to linear embedding layers.
+        # Whether or not to add skip connections to internal linear layers.
+        # All layers support skip connections, this can turn them off.
         self.skip_connections: bool = True
+
+        # Whether or not to add skip connections to the initial set of embedding layers.
+        self.initial_embedding_skip_connections: bool = True
+
+        # Structure for linear layers in the network
+        #
+        # Options are:
+        # -------------------------------------------------
+        # Basic
+        # Resnet
+        # Gated
+        # -------------------------------------------------
+        self.linear_block_type: str = "Basic"
+
+        # Structure for transformer layer
+        #
+        # Options are:
+        # -------------------------------------------------
+        # Standard
+        # NormFirst
+        # Gated
+        # -------------------------------------------------
+        self.transformer_type: str = "Standard"
+
+        # Non-linearity to use inside of the linear blocks.
+        #
+        # Options are:
+        # -------------------------------------------------
+        # None
+        # ReLU
+        # PReLU
+        # ELU
+        # GELU
+        # -------------------------------------------------
+        self.linear_activation: str = "PReLU"
 
         # Whether or not to apply a normalization layer during linear / embedding layers.
         #
         # Options are:
-        # ------------------------------------------------------------------------------
+        # -------------------------------------------------
         # None
         # BatchNorm
         # LayerNorm
         # MaskedBatchNorm
-        # ------------------------------------------------------------------------------
+        # -------------------------------------------------
         self.normalization: str = "LayerNorm"
+
+        # What type of masking to use throughout the linear layers.
+        #
+        # Options are:
+        # -------------------------------------------------
+        # None
+        # Multiplicative
+        # Filling
+        # -------------------------------------------------
+        self.masking: str = "Filling"
+
+        # DEPRECATED
+        # Whether or not to use PreLU activation on linear / embedding layers,
+        # Otherwise a regular relu will be used.
+        self.linear_prelu_activation: bool = True
 
         # =========================================================================================
         # Dataset Options
@@ -94,6 +156,9 @@ class Options(Namespace):
 
         # Whether or not to add a weight to the jet multiplicity to not forget about large events.
         self.balance_jets: bool = False
+
+        # Whether or not to add a weight to classification heads based on target presence.
+        self.balance_classifications: bool = False
 
         # Whether or not to train on partial events in the dataset.
         self.partial_events: bool = False
@@ -147,11 +212,23 @@ class Options(Namespace):
         # Set to 0 to disable cosine annealing and just use a decaying learning rate.
         self.learning_rate_cycles: int = 0
 
+        # Scalar term for the primary jet assignment loss.
+        self.assignment_loss_scale: float = 1.0
+
         # Scalar term for the direct classification loss of particles.
-        self.classification_loss_scale: float = 0.0
+        self.detection_loss_scale: float = 0.0
 
         # Scalar term for the symmetric KL-divergence loss between distributions.
         self.kl_loss_scale: float = 0.0
+
+        # Scalar term for regression L2 loss term
+        self.regression_loss_scale: float = 0.0
+
+        # Scalar term for classification Cross Entropy loss term
+        self.classification_loss_scale: float = 0.0
+
+        # Automatically balance loss terms using Jacobians.
+        self.balance_losses: bool = True
 
         # Optimizer l2 penalty based on weight values.
         self.l2_penalty: float = 0.0
@@ -184,12 +261,29 @@ class Options(Namespace):
         self.trial_output_dir: str = './test_output'
 
     def display(self):
-        print("=" * 70)
-        print("Options")
-        print("-" * 70)
-        for key, val in sorted(self.__dict__.items()):
-            print(f"{key:32}: {val}")
-        print("=" * 70)
+        try:
+            from rich import get_console
+            from rich.table import Table
+
+            default_options = self.__class__().__dict__
+            console = get_console()
+
+            table = Table(title="Configuration", header_style="bold magenta")
+            table.add_column("Parameter", justify="left")
+            table.add_column("Value", justify="left")
+
+            for key, value in sorted(self.__dict__.items()):
+                table.add_row(key, str(value), style="red" if value != default_options[key] else None)
+
+            console.print(table)
+
+        except ImportError:
+            print("=" * 70)
+            print("Options")
+            print("-" * 70)
+            for key, val in sorted(self.__dict__.items()):
+                print(f"{key:32}: {val}")
+            print("=" * 70)
 
     def update_options(self, new_options, update_datasets: bool = True):
         integer_options = {key for key, val in self.__dict__.items() if isinstance(val, int)}

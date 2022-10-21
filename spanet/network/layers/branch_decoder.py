@@ -5,9 +5,10 @@ import torch
 from torch import Tensor, nn, jit
 
 from spanet.options import Options
+from spanet.dataset.types import Symmetries
 from spanet.network.utilities import masked_log_softmax
 from spanet.network.layers.stacked_encoder import StackedEncoder
-from spanet.network.layers.branch_classifier import BranchClassifier
+from spanet.network.layers.branch_linear import BranchLinear
 from spanet.network.symmetric_attention import SymmetricAttentionSplit, SymmetricAttentionFull
 
 
@@ -16,30 +17,35 @@ class BranchDecoder(nn.Module):
     WEIGHTS_INDEX_NAMES = "ijklmn"
     DEFAULT_JET_COUNT = 16
 
-    def __init__(self,
-                 options: Options,
-                 order: int,
-                 permutation_indices: List[Tuple[int, ...]],
-                 transformer_options: Tuple[int, int, int, float, str],
-                 softmax_output: bool = True):
+    def __init__(
+        self,
+        options: Options,
+        particle_name: str,
+        product_names: List[str],
+        product_symmetries: Symmetries,
+        softmax_output: bool = True
+    ):
         super(BranchDecoder, self).__init__()
 
-        self.order = order
+        self.degree = product_symmetries.degree
+        self.particle_name = particle_name
+        self.product_names = product_names
         self.softmax_output = softmax_output
         self.combinatorial_scale = options.combinatorial_scale
 
         # Each branch has a personal encoder stack to extract particle-level data
-        self.encoder = jit.script(StackedEncoder(options,
-                                                 options.num_branch_embedding_layers,
-                                                 options.num_branch_encoder_layers,
-                                                 transformer_options))
+        self.encoder = StackedEncoder(
+            options,
+            options.num_branch_embedding_layers,
+            options.num_branch_encoder_layers
+        )
 
         # Symmetric attention to create the output distribution
         attention_layer = SymmetricAttentionSplit if options.split_symmetric_attention else SymmetricAttentionFull
-        self.attention = attention_layer(options, order, transformer_options, permutation_indices)
+        self.attention = attention_layer(options, self.degree, product_symmetries.permutations)
 
         # Optional output predicting if the particle was present or not
-        self.classifier = BranchClassifier(options)
+        self.detection_classifier = BranchLinear(options, options.num_detector_layers)
 
         self.num_targets = len(self.attention.permutation_group)
         self.permutation_indices = self.attention.permutation_indices
@@ -49,18 +55,16 @@ class BranchDecoder(nn.Module):
         self.diagonal_masks = {}
 
     def create_padding_mask_operation(self, batch_size: int):
-        weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.order]
+        weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.degree]
         operands = ','.join(map(lambda x: 'b' + x, weights_index_names))
         expression = f"{operands}->b{weights_index_names}"
-        shapes = [(batch_size, self.DEFAULT_JET_COUNT)] * self.order
-        return contract_expression(expression, *shapes)
+        return expression
 
     def create_diagonal_mask_operation(self):
-        weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.order]
+        weights_index_names = self.WEIGHTS_INDEX_NAMES[:self.degree]
         operands = ','.join(map(lambda x: 'b' + x, weights_index_names))
         expression = f"{operands}->{weights_index_names}"
-        shapes = [(self.DEFAULT_JET_COUNT, self.DEFAULT_JET_COUNT)] * self.order
-        return contract_expression(expression, *shapes)
+        return expression
 
     def create_output_mask(self, output: Tensor, sequence_mask: Tensor) -> Tensor:
         num_jets = output.shape[1]
@@ -71,8 +75,8 @@ class BranchDecoder(nn.Module):
         # =========================================================================================
         # Padding mask
         # =========================================================================================
-        padding_mask_operands = [batch_sequence_mask.squeeze()] * self.order
-        padding_mask = self.padding_mask_operation(*padding_mask_operands, backend='torch')
+        padding_mask_operands = [batch_sequence_mask.squeeze() * 1] * self.degree
+        padding_mask = torch.einsum(self.padding_mask_operation, *padding_mask_operands)
 
         # =========================================================================================
         # Diagonal mask
@@ -83,19 +87,25 @@ class BranchDecoder(nn.Module):
             identity = 1 - torch.eye(num_jets)
             identity = identity.type_as(output)
 
-            diagonal_mask_operands = [identity] * self.order
-            diagonal_mask = self.diagonal_mask_operation(*diagonal_mask_operands, backend='torch')
-            diagonal_mask = diagonal_mask.unsqueeze(0) < (num_jets + 1 - self.order)
+            diagonal_mask_operands = [identity * 1] * self.degree
+            diagonal_mask = torch.einsum(self.diagonal_mask_operation, *diagonal_mask_operands)
+            diagonal_mask = diagonal_mask.unsqueeze(0) < (num_jets + 1 - self.degree)
             self.diagonal_masks[(num_jets, output.device)] = diagonal_mask
 
-        return padding_mask * diagonal_mask
+        return (padding_mask * diagonal_mask).bool()
 
-    def forward(self, x: Tensor, padding_mask: Tensor, sequence_mask: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(
+            self,
+            event_vectors: Tensor,
+            padding_mask: Tensor,
+            sequence_mask: Tensor,
+            global_mask: Tensor,
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """ Create a distribution over jets for a given particle and a probability of its existence.
 
         Parameters
         ----------
-        x : [T, B, D]
+        event_vectors : [T, B, D]
             Hidden activations after central encoder.
         padding_mask : [B, T]
             Negative mask for transformer input.
@@ -104,51 +114,66 @@ class BranchDecoder(nn.Module):
 
         Returns
         -------
-        output : [T, T, ...]
-            Jet distribution for this particle.
+        selection : [TS, TS, ...]
+            Distribution over sequential vectors for the target vectors.
         classification: [B]
             Probability of this particle existing in the data.
         """
 
         # ------------------------------------------------------
         # Apply the branch's independent encoder to each vector.
-        # q : [T, B, D]
+        # particle_vectors : [T, B, D]
         # ------------------------------------------------------
-        q = self.encoder(x, padding_mask, sequence_mask)
+        encoded_vectors, particle_vector = self.encoder(event_vectors, padding_mask, sequence_mask)
 
         # -----------------------------------------------
         # Run the encoded vectors through the classifier.
-        # classification: [B]
+        # detection: [B, 1]
         # -----------------------------------------------
-        classification = self.classifier(q, sequence_mask)
+        detection = self.detection_classifier(particle_vector).squeeze()
 
-        # -----------------------------------------------------------------
-        # Create the jet distribution logits and the correctly shaped mask.
-        # output : [T, T, ...]
-        # mask : [T, T, ...]
-        # -----------------------------------------------------------------
-        output = self.attention(q, padding_mask, sequence_mask)
-        mask = self.create_output_mask(output, sequence_mask)
+        # --------------------------------------------------------
+        # Extract sequential vectors only for the assignment step.
+        # sequential_particle_vectors : [TS, B, D]
+        # sequential_padding_mask : [B, TS]
+        # sequential_sequence_mask : [TS, B, 1]
+        # --------------------------------------------------------
+        sequential_particle_vectors = encoded_vectors[global_mask].contiguous()
+        sequential_padding_mask = padding_mask[:, global_mask].contiguous()
+        sequential_sequence_mask = sequence_mask[global_mask].contiguous()
+
+        # --------------------------------------------------------------------
+        # Create the vector distribution logits and the correctly shaped mask.
+        # assignment : [TS, TS, ...]
+        # assignment_mask : [TS, TS, ...]
+        # --------------------------------------------------------------------
+        assignment, daughter_vectors = self.attention(
+            sequential_particle_vectors,
+            sequential_padding_mask,
+            sequential_sequence_mask
+        )
+
+        assignment_mask = self.create_output_mask(assignment, sequential_sequence_mask)
 
         # ---------------------------------------------------------------------------
         # Need to reshape output to make softmax-calculation easier.
         # We transform the mask and output into a flat representation.
         # Afterwards, we apply a masked log-softmax to create the final distribution.
-        # output : [T, T, ...]
-        # mask : [T, T, ...]
+        # output : [TS, TS, ...]
+        # mask : [TS, TS, ...]
         # ---------------------------------------------------------------------------
         if self.softmax_output:
-            original_shape = output.shape
+            original_shape = assignment.shape
             batch_size = original_shape[0]
 
-            output = output.reshape(batch_size, -1)
-            mask = mask.reshape(batch_size, -1)
+            assignment = assignment.reshape(batch_size, -1)
+            assignment_mask = assignment_mask.reshape(batch_size, -1)
 
-            output = masked_log_softmax(output, mask)
-            output = output.view(*original_shape)
+            assignment = masked_log_softmax(assignment, assignment_mask)
+            assignment = assignment.view(*original_shape)
 
             # mask = mask.view(*original_shape)
             # offset = torch.log(mask.sum((1, 2, 3), keepdims=True).float()) * self.combinatorial_scale
             # output = output + offset
 
-        return output, classification, mask
+        return assignment, detection, assignment_mask, particle_vector, daughter_vectors

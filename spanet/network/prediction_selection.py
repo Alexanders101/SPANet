@@ -1,7 +1,10 @@
+from typing import List
 import numpy as np
 
 import numba
 from numba import njit
+
+TArray = np.ndarray
 
 TFloat32 = numba.types.float32
 TInt64 = numba.types.int64
@@ -211,8 +214,8 @@ def _extract_predictions(predictions, num_partons, max_jets, batch_size):
     return np.ascontiguousarray(output.transpose((1, 0, 2)))
 
 
-def extract_predictions(predictions):
-    flat_predictions = numba.typed.List([p.detach().cpu().numpy().reshape((p.shape[0], -1)) for p in predictions])
+def extract_predictions(predictions: List[TArray]):
+    flat_predictions = numba.typed.List([p.reshape((p.shape[0], -1)) for p in predictions])
     num_partons = np.array([len(p.shape) - 1 for p in predictions])
     max_jets = max(max(p.shape[1:]) for p in predictions)
     batch_size = max(p.shape[0] for p in predictions)

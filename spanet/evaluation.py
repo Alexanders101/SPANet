@@ -6,6 +6,21 @@ import torch
 from tqdm import tqdm
 
 from spanet import JetReconstructionModel, Options
+from spanet.dataset.types import Evaluation
+from spanet.network.jet_reconstruction.jet_reconstruction_network import extract_predictions
+
+from collections import defaultdict
+
+
+def tree_concatenate(tree):
+    output = {}
+    for key, value in tree.items():
+        if isinstance(value, dict):
+            output[key] = tree_concatenate(value)
+        else:
+            output[key] = np.concatenate(value)
+
+    return output
 
 
 def load_model(log_directory: str,
@@ -48,29 +63,74 @@ def load_model(log_directory: str,
     return model
 
 
-def predict_on_test_dataset(model: JetReconstructionModel, cuda: bool = False):
-    full_masks = []
-    full_targets = []
-    full_predictions = []
-    full_classifications = []
+def evaluate_on_test_dataset(model: JetReconstructionModel) -> Evaluation:
+    full_assignments = defaultdict(list)
+    full_assignment_probabilities = defaultdict(list)
+    full_detection_probabilities = defaultdict(list)
 
-    for source_data, *targets in tqdm(model.test_dataloader(), desc="Evaluating Model"):
-        if cuda:
-            source_data = [x.cuda() for x in source_data]
+    full_classifications = defaultdict(list)
+    full_regressions = defaultdict(list)
 
-        predictions, classifications = model.predict_jets_and_particles(*source_data)
+    for batch in tqdm(model.test_dataloader(), desc="Evaluating Model"):
+        sources = [[x[0].to(model.device), x[1].to(model.device)] for x in batch.sources]
+        outputs = model.forward(sources)
 
-        full_targets.append([x[0].numpy() for x in targets])
-        full_masks.append([x[1].numpy() for x in targets])
-        full_predictions.append([x for x in predictions])
-        full_classifications.append([x for x in classifications])
+        assignment_indices = extract_predictions([
+            np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)
+            for assignment in outputs.assignments
+        ])
 
-    full_masks = np.concatenate(full_masks, axis=-1)
-    full_targets = list(map(np.concatenate, zip(*full_targets)))
-    full_predictions = list(map(np.concatenate, zip(*full_predictions)))
-    full_classifications = list(map(np.concatenate, zip(*full_classifications)))
+        detection_probabilities = np.stack([
+            torch.sigmoid(detection).cpu().numpy()
+            for detection in outputs.detections
+        ])
 
-    num_jets = model.testing_dataset.source_mask.sum(1).numpy()
-    num_jets = num_jets[:full_masks.shape[1]]
+        classifications = {
+            key: torch.softmax(classification, 1).cpu().numpy()
+            for key, classification in outputs.classifications.items()
+        }
 
-    return full_predictions, full_classifications, full_targets, full_masks, num_jets
+        regressions = {
+            key: value.cpu().numpy()
+            for key, value in outputs.regressions.items()
+        }
+
+        assignment_probabilities = []
+        dummy_index = torch.arange(assignment_indices[0].shape[0])
+        for assignment_probability, assignment, symmetries in zip(
+            outputs.assignments,
+            assignment_indices,
+            model.event_info.product_symbolic_groups.values()
+        ):
+            # Get the probability of the best assignment.
+            # Have to use explicit function call here to construct index dynamically.
+            assignment_probability = assignment_probability.__getitem__((dummy_index, *assignment.T))
+
+            # Convert from log-probability to probability.
+            assignment_probability = torch.exp(assignment_probability)
+
+            # Multiply by the symmetry factor to account for equivalent predictions.
+            assignment_probability = symmetries.order() * assignment_probability
+
+            # Convert back to cpu and add to database.
+            assignment_probabilities.append(assignment_probability.cpu().numpy())
+
+        for i, name in enumerate(model.event_info.product_particles):
+            full_assignments[name].append(assignment_indices[i])
+            full_assignment_probabilities[name].append(assignment_probabilities[i])
+            full_detection_probabilities[name].append(detection_probabilities[i])
+
+        for key, regression in regressions.items():
+            full_regressions[key].append(regression)
+
+        for key, classification in classifications.items():
+            full_classifications[key].append(classification)
+
+    return Evaluation(
+        tree_concatenate(full_assignments),
+        tree_concatenate(full_assignment_probabilities),
+        tree_concatenate(full_detection_probabilities),
+        tree_concatenate(full_regressions),
+        tree_concatenate(full_classifications)
+    )
+

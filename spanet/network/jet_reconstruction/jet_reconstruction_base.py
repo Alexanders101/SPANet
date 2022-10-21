@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import numpy as np
 import torch
+from torch import nn
 
 # noinspection PyProtectedMember
 from torch.utils.data import DataLoader
@@ -20,15 +21,6 @@ class JetReconstructionBase(pl.LightningModule):
 
         self.training_dataset, self.validation_dataset, self.testing_dataset = self.create_datasets()
 
-        self.mean = 0
-        self.std = 1
-
-        # Normalize datasets using training dataset statistics
-        if self.options.normalize_features:
-            self.mean, self.std = self.training_dataset.compute_statistics()
-            self.mean = torch.nn.Parameter(self.mean, requires_grad=False)
-            self.std = torch.nn.Parameter(self.std, requires_grad=False)
-
         # Compute class weights for particles from the training dataset target distribution
         self.balance_particles = False
         if options.balance_particles and options.partial_events:
@@ -40,18 +32,27 @@ class JetReconstructionBase(pl.LightningModule):
         # Compute class weights for jets from the training dataset target distribution
         self.balance_jets = False
         if options.balance_jets:
-            jet_weights_tensor = self.training_dataset.compute_jet_balance()
+            jet_weights_tensor = self.training_dataset.compute_vector_balance()
             self.jet_weights_tensor = torch.nn.Parameter(jet_weights_tensor, requires_grad=False)
             self.balance_jets = True
 
+        self.balance_classifications = options.balance_classifications
+        if self.balance_classifications:
+            classification_weights = {
+                key: torch.nn.Parameter(value, requires_grad=False)
+                for key, value in self.training_dataset.compute_classification_balance().items()
+            }
+
+            self.classification_weights = torch.nn.ParameterDict(classification_weights)
+
         # Helper arrays for permutation groups. Used for the partial-event loss functions.
-        event_permutation_group = np.array(self.training_dataset.event_permutation_group)
+        event_permutation_group = np.array(self.event_info.event_permutation_group)
         self.event_permutation_tensor = torch.nn.Parameter(torch.from_numpy(event_permutation_group), False)
 
         # Helper variables for keeping track of the number of batches in each epoch.
         # Used for learning rate scheduling and other things.
-        # self.steps_per_epoch = len(self.training_dataset) // (self.options.batch_size * max(1, self.options.num_gpu))
-        self.steps_per_epoch = len(self.training_dataset) // self.options.batch_size
+        self.steps_per_epoch = len(self.training_dataset) // (self.options.batch_size * max(1, self.options.num_gpu))
+        # self.steps_per_epoch = len(self.training_dataset) // self.options.batch_size
         self.total_steps = self.steps_per_epoch * self.options.epochs
         self.warmup_steps = int(round(self.steps_per_epoch * self.options.learning_rate_warmup_epochs))
 
@@ -72,6 +73,10 @@ class JetReconstructionBase(pl.LightningModule):
             "prefetch_factor": 2
         }
 
+    @property
+    def event_info(self):
+        return self.training_dataset.event_info
+
     def create_datasets(self):
         event_info_file = self.options.event_info_file
         training_file = self.options.training_file
@@ -90,28 +95,34 @@ class JetReconstructionBase(pl.LightningModule):
             validation_range = (train_validation_split, self.options.dataset_limit)
 
         # Construct primary training datasets
-        # Note that only the training dataset might be limited to full events or partial events.
-        training_dataset = self.dataset(data_file=training_file,
-                                        event_info=event_info_file,
-                                        limit_index=training_range,
-                                        jet_limit=self.options.limit_to_num_jets,
-                                        partial_events=self.options.partial_events,
-                                        randomization_seed=self.options.dataset_randomization,)
+        # Note that only the training dataset should be limited to full events or partial events.
+        training_dataset = self.dataset(
+            data_file=training_file,
+            event_info=event_info_file,
+            limit_index=training_range,
+            vector_limit=self.options.limit_to_num_jets,
+            partial_events=self.options.partial_events,
+            randomization_seed=self.options.dataset_randomization
+        )
 
-        validation_dataset = self.dataset(data_file=validation_file,
-                                          event_info=event_info_file,
-                                          limit_index=validation_range,
-                                          jet_limit=self.options.limit_to_num_jets,
-                                          randomization_seed=self.options.dataset_randomization)
+        validation_dataset = self.dataset(
+            data_file=validation_file,
+            event_info=event_info_file,
+            limit_index=validation_range,
+            vector_limit=self.options.limit_to_num_jets,
+            randomization_seed=self.options.dataset_randomization
+        )
 
         # Optionally construct the testing dataset.
         # This is not used in the main training script but is still useful for testing later.
         testing_dataset = None
         if len(self.options.testing_file) > 0:
-            testing_dataset = self.dataset(data_file=self.options.testing_file,
-                                           event_info=self.options.event_info_file,
-                                           limit_index=1.0,
-                                           jet_limit=self.options.limit_to_num_jets)
+            testing_dataset = self.dataset(
+                data_file=self.options.testing_file,
+                event_info=self.options.event_info_file,
+                limit_index=1.0,
+                vector_limit=self.options.limit_to_num_jets
+            )
 
         return training_dataset, validation_dataset, testing_dataset
 
