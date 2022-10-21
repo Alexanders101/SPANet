@@ -9,6 +9,7 @@ conda activate ./environment
 
 ## Full Training Data
 
+
 Included in the repository are all files necessary to quickly test SPANets on `ttbar` events. This repository only contains a tiny example dataset for a sanity check, but you may acquire a larger training and testing data set here: [http://mlphysics.ics.uci.edu/data/2021_ttbar/](http://mlphysics.ics.uci.edu/data/2021_ttbar/). As of 2022/10/20, this dataset is still in the old style to ensure backwards compatibility. You may run the following commands to download and convert the dataset (In the SPANet root directory).
 ```bash
 wget -O ./data/full_hadronic_ttbar/training.h5 http://mlphysics.ics.uci.edu/data/2021_ttbar/ttbar_training.h5
