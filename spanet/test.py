@@ -7,9 +7,9 @@ from argparse import ArgumentParser
 import numpy as np
 from numpy.typing import ArrayLike
 
-from spanet import JetReconstructionModel
 from spanet.dataset.evaluator import SymmetricEvaluator, EventInfo
-from spanet.evaluation import evaluate_on_test_dataset, load_model, Evaluation
+from spanet.evaluation import evaluate_on_test_dataset, load_model
+from spanet.dataset.types import Evaluation
 
 
 def formatter(value: Any) -> str:
@@ -190,8 +190,10 @@ def display_table(results: Dict[str, Any], jet_limits: List[str], clusters: List
 
 
 def evaluate_predictions(evaluation: Evaluation, num_vectors: ArrayLike, assignments: ArrayLike, event_info_file: str, lines: int):
-    event_info = EventInfo.read_from_ini(event_info_file)
+    event_info = EventInfo.read_from_yaml(event_info_file)
     evaluator = SymmetricEvaluator(event_info)
+    print(assignments.shape)
+    print(assignments)
 
     # Flatten predictions
     predictions = list(evaluation.assignments.values())
@@ -233,7 +235,7 @@ def main(
     latex: bool
 ):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
-    evaluation = evaluate_on_test_dataset(model, gpu)
+    evaluation = evaluate_on_test_dataset(model)
     results, jet_limits, clusters = evaluate_predictions(evaluation, model.testing_dataset.num_vectors.cpu().numpy(), model.testing_dataset.assignments.values(), model.options.event_info_file, lines)
     if latex:
         display_latex_table(results, jet_limits, clusters)
