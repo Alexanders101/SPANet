@@ -189,18 +189,9 @@ def display_table(results: Dict[str, Any], jet_limits: List[str], clusters: List
         print()
 
 
-def evaluate_predictions(evaluation: Evaluation, num_vectors: ArrayLike, assignments: ArrayLike, event_info_file: str, lines: int):
+def evaluate_predictions(predictions: ArrayLike, num_vectors: ArrayLike, targets: ArrayLike, masks: ArrayLike, event_info_file: str, lines: int):
     event_info = EventInfo.read_from_yaml(event_info_file)
     evaluator = SymmetricEvaluator(event_info)
-    print(assignments.shape)
-    print(assignments)
-
-    # Flatten predictions
-    predictions = list(evaluation.assignments.values())
-
-    # Flatten targets and convert to numpy
-    targets = [assignment[0].cpu().numpy() for assignment in assignments]
-    masks = [assignment[1].cpu().numpy() for assignment in assignments]
 
     minimum_jet_count = num_vectors.min()
     jet_limits = [f"== {minimum_jet_count + i}" for i in range(lines)]
@@ -236,7 +227,15 @@ def main(
 ):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
     evaluation = evaluate_on_test_dataset(model)
-    results, jet_limits, clusters = evaluate_predictions(evaluation, model.testing_dataset.num_vectors.cpu().numpy(), model.testing_dataset.assignments.values(), model.options.event_info_file, lines)
+
+    # Flatten predictions
+    predictions = list(evaluation.assignments.values())
+
+    # Flatten targets and convert to numpy
+    targets = [assignment[0].cpu().numpy() for assignment in model.testing_dataset.assignments.values()]
+    masks = [assignment[1].cpu().numpy() for assignment in model.testing_dataset.assignments.values()]
+
+    results, jet_limits, clusters = evaluate_predictions(predictions, model.testing_dataset.num_vectors.cpu().numpy(), targets, masks, model.options.event_info_file, lines)
     if latex:
         display_latex_table(results, jet_limits, clusters)
     else:
