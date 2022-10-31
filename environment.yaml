@@ -25,6 +25,3 @@ dependencies:
   - jupyterlab
   - seaborn
   - rich
-
-  - pip:
-      - fairscale

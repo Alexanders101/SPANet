@@ -7,6 +7,11 @@ conda env create -p ./environment --file environment.yaml
 conda activate ./environment
 ```
 
+## Installation
+Optionally, you can install this package to use it outside of the git directory.
+
+Either run `pip install .` or, for an editable install, `pip install -e .` from the root directory of the repository.
+
 ## Full Training Data
 
 
@@ -34,11 +39,11 @@ a complete training run takes roughly 4 hours on a single GPU.
 ```bash
 # Example Dataset
 # ---------------
-python train.py -of options_files/full_hadronic_ttbar/example.json --gpus NUM_GPU
+python -m spanet.train -of options_files/full_hadronic_ttbar/example.json --gpus NUM_GPU
 
 # Full Dataset
 # ------------
-python train.py -of options_files/full_hadronic_ttbar/full_training.json --gpus NUM_GPUS
+python -m spanet.train -of options_files/full_hadronic_ttbar/full_training.json --gpus NUM_GPUS
 ```
 
 If you get a `RuntimeError: CUDA out of memory` then you need to decrease the
@@ -74,11 +79,11 @@ If you trained more than once, then adjust the version number accordingly.
 ```bash
 # Example Dataset
 # ---------------
-python test.py ./spanet_output/version_0 -tf data/full_hadronic_ttbar/example.h5 --gpu
+python -m spanet.test ./spanet_output/version_0 -tf data/full_hadronic_ttbar/example.h5 --gpu
 
 # Full Dataset
 # ------------
-python test.py ./spanet_output/version_0 -tf data/full_hadronic_ttbar/testing.h5 --gpu
+python -m spanet.test ./spanet_output/version_0 -tf data/full_hadronic_ttbar/testing.h5 --gpu
 ```
 
 Next we will output all SPANet predictions on a set of events
@@ -87,11 +92,11 @@ in order to analyze them further, simply run `predict.py` as follows.
 ```bash
 # Example Dataset
 # ---------------
-python predict.py  ./spanet_output/version_0 ./spanet_ttbar_example_output.h5 -tf data/full_hadronic_ttbar/example.h5 --gpu
+python -m spanet.predict ./spanet_output/version_0 ./spanet_ttbar_example_output.h5 -tf data/full_hadronic_ttbar/example.h5 --gpu
 
 # Full Dataset
 # ------------
-python predict.py  ./spanet_output/version_0 ./spanet_ttbar_testing_output.h5 -tf data/full_hadronic_ttbar/testing.h5 --gpu
+python -m spanet.predict ./spanet_output/version_0 ./spanet_ttbar_testing_output.h5 -tf data/full_hadronic_ttbar/testing.h5 --gpu
 ```
 
 This will create a new HDF5 File named `spanet_ttbar_output.h5` with the same

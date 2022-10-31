@@ -12,6 +12,17 @@ We recently pushed an updated version 2 of this library which adds several new f
 3. New Regression and Classification output heads for performing per-event or per-particle predictions.
 4. Gated transformers and linear layers for more robust networks. Less hyperparameter optimization.
 
+## Installation
+You can install this package to use it outside of the git directory after cloning.
+
+```bash
+git clone https://github.com/Alexanders101/SPANet
+cd SPANet
+pip install .
+```
+
+Alternatively, you can use `pip install -e .` to install in an editable mode.
+
 ### Note
 The configuration `ini` has been deprecated into a configuration `yaml`. The conversion should just be to change the syntax a bit, the values should remain the same. A conversion script is in the works.
 
