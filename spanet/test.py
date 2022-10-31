@@ -134,7 +134,12 @@ def display_latex_table(results: Dict[str, Any], jet_limits: List[str], clusters
             particle_keys = [key.split("/")[1] for key in results[jet_limit] if
                              event_type in key and "event" not in key]
 
-            columns["Jet Limit"].append(jet_limit)
+            columns["Jet Limit"].append(
+                jet_limit.replace(">=", "$\\geq$").replace("==", "$=$")
+                if jet_limit is not None
+                else jet_limit
+            )
+
             columns["Event Proportion"].append(results[jet_limit][f"{event_type}/event_proportion"])
             columns["Jet Proportion"].append(results[jet_limit][f"event_jet_proportion"])
             columns["Event Purity"].append(results[jet_limit][f"{event_type}/event_purity"])
