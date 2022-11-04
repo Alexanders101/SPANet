@@ -69,6 +69,10 @@ class RelativeInput(BaseInput):
         self.invariant_mask = invariant_mask[limit_index].contiguous()
         self.covariant_mask = covariant_mask[limit_index].contiguous()
 
+    @property
+    def reconstructable(self) -> bool:
+        return True
+
     # noinspection PyAttributeOutsideInit
     def limit(self, event_mask):
         self.invariant_data = self.invariant_data[event_mask].contiguous()
@@ -104,6 +108,9 @@ class RelativeInput(BaseInput):
 
     def num_vectors(self) -> int:
         return self.invariant_mask.sum(1)
+
+    def max_vectors(self) -> int:
+        return self.source_mask.shape[1]
 
     def __getitem__(self, item) -> Source:
         invariant_data = self.invariant_data[item]

@@ -85,7 +85,7 @@ class JetReconstructionDataset(Dataset):
             first_key = [
                 name
                 for name, input_type in self.event_info.input_types.items()
-                if input_type == InputType.Sequential
+                if input_type in {InputType.Sequential, InputType.Relative}
             ][0]
             self.num_events = self.dataset(file, [SpecialKey.Inputs, first_key], SpecialKey.Mask).shape[0]
 
@@ -97,6 +97,15 @@ class JetReconstructionDataset(Dataset):
                 (input_name, create_source_input(self.event_info, file, input_name, self.num_events, limit_index))
                 for input_name in self.event_info.input_names
             ))
+
+            # Compute the jet offsets for different input sources if we are reconstructing more than one type of object.
+            self.source_offsets = torch.tensor([
+                dataset.max_vectors()
+                for name, dataset in self.sources.items()
+                if dataset.reconstructable
+            ])
+            self.source_offsets = torch.nn.functional.pad(self.source_offsets, (1, 0), value=0)
+            self.source_offsets = torch.cumsum(self.source_offsets, 0)[:-1]
 
             # Load various types of targets.
             self.assignments = self.load_assignments(file, limit_index)
@@ -192,10 +201,22 @@ class JetReconstructionDataset(Dataset):
                 dataset = self.dataset(hdf5_file, [SpecialKey.Targets, event_particle], daughter)
                 dataset.read_direct(target_data[index].numpy())
 
-            target_data = target_data.transpose(0, 1)
-            target_data = target_data[limit_index]
+            # Offset the targets if they are not global targets
+            for index, source in enumerate(daughter_particles.sources):
+                if source >= 0:
+                    target_data[index] += self.source_offsets[source] * (target_data[index] >= 0)
 
-            target_mask = (target_data >= 0).all(1)
+            target_data = target_data.transpose(0, 1)
+
+            # Either load an explicit mask or generate a mask based on the targets
+            try:
+                target_mask = self.dataset(hdf5_file, [SpecialKey.Targets, event_particle], SpecialKey.Mask)
+                target_mask = torch.from_numpy(target_mask[:]).bool()
+            except KeyError:
+                target_mask = (target_data >= 0).all(1)
+
+            target_data = target_data[limit_index]
+            target_mask = target_mask[limit_index]
 
             targets[event_particle] = (target_data, target_mask)
 
@@ -335,7 +356,7 @@ class JetReconstructionDataset(Dataset):
                 targets = positive_target & ~negative_target
                 eq_class_count += targets.sum().item()
 
-            eq_class_counts[eq_class] = eq_class_count
+            eq_class_counts[eq_class] = eq_class_count + 1
 
         # Compute the effective class count
         # https://arxiv.org/pdf/1901.05555.pdf

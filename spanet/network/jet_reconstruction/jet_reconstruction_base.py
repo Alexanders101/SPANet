@@ -82,7 +82,7 @@ class JetReconstructionBase(pl.LightningModule):
         training_file = self.options.training_file
         validation_file = self.options.validation_file
 
-        training_range = 1.0
+        training_range = self.options.dataset_limit
         validation_range = 1.0
 
         # If we dont have a validation file provided, create one from the training file.

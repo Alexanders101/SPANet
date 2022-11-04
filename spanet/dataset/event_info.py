@@ -230,12 +230,28 @@ class EventInfo:
 
         product_particles = OrderedDict()
         for event_particle in event_particles:
-            product_names = config[SpecialKey.Event][event_particle]
+            products = config[SpecialKey.Event][event_particle]
+
+            product_names = [
+                next(iter(product.keys())) if isinstance(product, dict) else product
+                for product in products
+            ]
+
+            product_sources = [
+                next(iter(product.values())) if isinstance(product, dict) else None
+                for product in products
+            ]
+
+            input_names = list(input_types.keys())
+            product_sources = [
+                input_names.index(source) if source is not None else -1
+                for source in product_sources
+            ]
 
             product_permutations = key_with_default(permutation_config, event_particle, default=[])
             product_permutations = list(map(tuple, product_permutations))
 
-            product_particles[event_particle] = Particles(product_names, product_permutations)
+            product_particles[event_particle] = Particles(product_names, product_permutations, product_sources)
 
         # Extract Regression Information.
         # -------------------------------

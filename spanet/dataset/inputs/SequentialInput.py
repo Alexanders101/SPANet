@@ -35,6 +35,10 @@ class SequentialInput(BaseInput):
         self.source_data = source_data[limit_index].contiguous()
         self.source_mask = source_mask[limit_index].contiguous()
 
+    @property
+    def reconstructable(self) -> bool:
+        return True
+
     # noinspection PyAttributeOutsideInit
     def limit(self, event_mask):
         self.source_data = self.source_data[event_mask].contiguous()
@@ -54,6 +58,9 @@ class SequentialInput(BaseInput):
 
     def num_vectors(self) -> int:
         return self.source_mask.sum(1)
+
+    def max_vectors(self) -> int:
+        return self.source_mask.shape[1]
 
     def __getitem__(self, item) -> Source:
         return Source(self.source_data[item], self.source_mask[item])

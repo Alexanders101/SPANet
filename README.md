@@ -13,7 +13,7 @@ We recently pushed an updated version 2 of this library which adds several new f
 4. Gated transformers and linear layers for more robust networks. Less hyperparameter optimization.
 
 ## Installation
-You can install this package to use it outside of the git directory after cloning.
+You can install this package to use it outside of the repository after cloning.
 
 ```bash
 git clone https://github.com/Alexanders101/SPANet
@@ -77,23 +77,23 @@ the different setup components, or just follow the ttbar example.
 ### Training
 
 Once those steps are complete, you can begin training by 
-calling `train.py` with your chosen parameters. For more information
-simply run `python train.py --help`
+calling `spanet.train` with your chosen parameters. For more information
+simply run `python -m spanet.train --help`
 
 You can experiment with the provided example configuration and dataset
 for some `ttbar` events by calling 
-`python train.py -of options_files/full_hadronic_ttbar/example.json --gpus NUM_GPUS` 
+`python -m spanet.train -of options_files/full_hadronic_ttbar/example.json --gpus NUM_GPUS` 
 where `NUM_GPUS` is the number of gpus available on your machine.
 
 ### Evaluation
 
 Once training is complete, you may evalute a network on
-a testing dataset by running `test.py` with a path to your previously
+a testing dataset by running `spanet.test` with a path to your previously
 trained network and a file on which to evalute on.
 
 For example, after running the previous training run on `ttbar_example`, 
 you can evaluate the network again on the example dataset by running.
-`python test.py ./spanet_output/version_0 -tf data/full_hadronic_ttbar/example.h5`
+`python -m spanet.test ./spanet_output/version_0 -tf data/full_hadronic_ttbar/example.h5`
 
 Note that the included example file is very small and you will likely not
 see very good performance on it.

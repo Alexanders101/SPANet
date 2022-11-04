@@ -26,6 +26,10 @@ class BaseInput(ABC):
 
         self.load(hdf5_file, limit_index)
 
+    @property
+    def reconstructable(self) -> bool:
+        raise NotImplementedError()
+
     @staticmethod
     def dataset(hdf5_file: h5py.File, group: List[str], key: str) -> h5py.Dataset:
         group_string = "/".join(group)
@@ -49,6 +53,10 @@ class BaseInput(ABC):
 
     @abstractmethod
     def num_vectors(self) -> int:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def max_vectors(self) -> int:
         raise NotImplementedError()
 
     @abstractmethod

@@ -21,10 +21,17 @@ SymbolicPermutationGroup = sympy.combinatorics.PermutationGroup
 class Particles:
     names: Tuple[str, ...]
     permutations: Permutations
+    sources: Tuple[int, ...]
 
-    def __init__(self, particles, permutations: Optional[Permutations] = None):
+    def __init__(
+        self,
+        particles: Tuple[str, ...],
+        permutations: Optional[Permutations] = None,
+        sources: Optional[Tuple[int, ...]] = None
+    ):
         self.names = particles
         self.permutations = permutations if permutations is not None else []
+        self.sources = sources if sources is not None else tuple(-1 for _ in self.names)
 
     def __iter__(self) -> Iterable[str]:
         return iter(self.names)

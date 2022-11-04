@@ -42,6 +42,10 @@ class GlobalInput(BaseInput):
         # noinspection PyAttributeOutsideInit
         self.source_mask = source_mask.unsqueeze(1)
 
+    @property
+    def reconstructable(self) -> bool:
+        return False
+
     # noinspection PyAttributeOutsideInit
     def limit(self, event_mask):
         self.source_data = self.source_data[event_mask].contiguous()
@@ -61,6 +65,9 @@ class GlobalInput(BaseInput):
 
     def num_vectors(self) -> int:
         return self.source_mask.sum(1)
+
+    def max_vectors(self) -> int:
+        return self.source_mask.shape[1]
 
     def __getitem__(self, item):
         return Source(self.source_data[item], self.source_mask[item])
