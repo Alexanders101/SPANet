@@ -110,7 +110,7 @@ class RelativeInput(BaseInput):
         return self.invariant_mask.sum(1)
 
     def max_vectors(self) -> int:
-        return self.source_mask.shape[1]
+        return self.invariant_mask.shape[1]
 
     def __getitem__(self, item) -> Source:
         invariant_data = self.invariant_data[item]

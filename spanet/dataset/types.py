@@ -11,8 +11,12 @@ from torch.utils._pytree import tree_map, tree_flatten, tree_unflatten
 
 
 ODict = OrderedDict
-Permutations = List[Tuple[str, ...]]
-MappedPermutations = List[Tuple[int, ...]]
+
+Permutation = List[Tuple[str, ...]]
+MappedPermutation = List[Tuple[int, ...]]
+
+Permutations = List[Permutation]
+MappedPermutations = List[MappedPermutation]
 
 PermutationGroup = List[List[int]]
 SymbolicPermutationGroup = sympy.combinatorics.PermutationGroup

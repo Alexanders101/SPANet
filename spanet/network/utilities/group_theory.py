@@ -1,7 +1,39 @@
-from itertools import chain, combinations, starmap, permutations
-from typing import List, Tuple
+from itertools import chain, combinations, starmap
+from typing import List, Tuple, Union
 
-from sympy.combinatorics import PermutationGroup, Permutation
+from sympy.combinatorics import Permutation as SymbolicPermutation
+
+from spanet.dataset.types import (
+    Permutation,
+    Permutations,
+    MappedPermutation,
+    MappedPermutations,
+    PermutationGroup,
+    SymbolicPermutationGroup
+)
+
+# Possible types of permutation that the user can input
+RawPermutation = Union[
+    List[List[str]],  # Explicit
+    List[str]  # Complete Group
+]
+
+
+def expand_permutation(permutation: RawPermutation) -> Permutation:
+    if isinstance(permutation[0], list):
+        return [tuple(p) for p in permutation]
+    else:
+        return [tuple(p) for p in combinations(permutation, 2)]
+
+
+def expand_permutations(permutations: List[RawPermutation]) -> Permutations:
+    expanded_permutations = []
+    for permutation in permutations:
+        if isinstance(permutation[0], list):
+            expanded_permutations.append([tuple(p) for p in permutation])
+        else:
+            expanded_permutations.extend([[tuple(p)] for p in combinations(permutation, 2)])
+    return expanded_permutations
 
 
 def power_set(iterable):
@@ -9,47 +41,38 @@ def power_set(iterable):
     return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
 
 
-def transpositions(iterable):
-    return set(chain.from_iterable(map(lambda x: permutations(x, r=2), iterable)))
-
-
-def complete_indices(size: int, indices: List[Tuple[int, ...]]) -> List[Tuple[int, ...]]:
-    output = indices.copy()
-    missing_indices = set(range(size)) - set(chain.from_iterable(indices))
+def complete_indices(degree: int, permutations: MappedPermutations) -> MappedPermutations:
+    """ Add missing elements to a permutation group based on the expected degree. """
+    output = permutations.copy()
+    missing_indices = set(range(degree)) - set(chain.from_iterable(chain.from_iterable(permutations)))
     for index in missing_indices:
-        output.append((index,))
+        output.append([(index,)])
 
     return output
 
 
-def symbolic_symmetry_group(permutation_indices: List[Tuple[int, ...]]) -> PermutationGroup:
+def symbolic_symmetry_group(permutations: MappedPermutations) -> SymbolicPermutationGroup:
     generators = []
+    for permutation in permutations:
+        symbolic_permutation = SymbolicPermutation
+        for element in permutation:
+            symbolic_permutation = symbolic_permutation(*element)
+        generators.append(symbolic_permutation)
 
-    for indices in permutation_indices:
-        if len(indices) > 1:
-            generators.extend(starmap(Permutation, combinations(indices, 2)))
-        else:
-            generators.append(Permutation(indices[0]))
-
-    return PermutationGroup(*generators)
-
-
-def explicit_symbolic_symmetry_group(permutation_indices: List[Tuple[int, ...]]) -> PermutationGroup:
-    generators = starmap(Permutation, permutation_indices)
-    return PermutationGroup(*generators)
+    return SymbolicPermutationGroup(*generators)
 
 
-def symmetry_group(permutation_indices: List[Tuple[int, ...]]) -> List[List[int]]:
-    permutation_group = symbolic_symmetry_group(permutation_indices)
+def symmetry_group(permutations: MappedPermutations) -> PermutationGroup:
+    permutation_group = symbolic_symmetry_group(permutations)
     symmetries = map(lambda x: x.array_form, permutation_group.elements)
     return list(symmetries)
 
 
-def complete_symbolic_symmetry_group(size: int, permutation_indices: List[Tuple[int, ...]]) -> PermutationGroup:
-    permutation_indices = complete_indices(size, permutation_indices)
-    return symbolic_symmetry_group(permutation_indices)
+def complete_symbolic_symmetry_group(degree: int, permutations: MappedPermutations) -> SymbolicPermutationGroup:
+    permutations = complete_indices(degree, permutations)
+    return symbolic_symmetry_group(permutations)
 
 
-def complete_symmetry_group(size: int, permutation_indices: List[Tuple[int, ...]]) -> List[List[int]]:
-    permutation_indices = complete_indices(size, permutation_indices)
-    return symmetry_group(permutation_indices)
+def complete_symmetry_group(degree: int, permutations: MappedPermutations) -> PermutationGroup:
+    permutations = complete_indices(degree, permutations)
+    return symmetry_group(permutations)

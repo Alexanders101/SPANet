@@ -12,7 +12,12 @@ except ImportError:
 import numpy as np
 
 from spanet.dataset.types import *
-from spanet.network.utilities.group_theory import power_set, complete_symbolic_symmetry_group, complete_symmetry_group
+from spanet.network.utilities.group_theory import (
+    power_set,
+    complete_symbolic_symmetry_group,
+    complete_symmetry_group,
+    expand_permutations
+)
 
 
 def cached_property(func):
@@ -91,10 +96,10 @@ class EventInfo:
 
     @cached_property
     def ordered_event_transpositions(self) -> Set[List[int]]:
-        return set(chain.from_iterable(map(
-            lambda x: permutations(x, r=2),
-            self.event_symmetries.permutations
-        )))
+        return set(chain.from_iterable(
+            e.transpositions()
+            for e in self.event_symbolic_group.elements
+        ))
 
     @cached_property
     def event_transpositions(self) -> Set[Tuple[int, int]]:
@@ -102,7 +107,7 @@ class EventInfo:
 
     @cached_property
     def event_equivalence_classes(self) -> Set[FrozenSet[FrozenSet[int]]]:
-        num_particles = self.event_symmetries[0]
+        num_particles = self.event_symmetries.degree
         group = self.event_symbolic_group
         sets = map(frozenset, power_set(range(num_particles)))
         return set(frozenset(frozenset(g(x) for x in s) for g in group.elements) for s in sets)
@@ -111,9 +116,9 @@ class EventInfo:
     def product_permutation_groups(self) -> ODict[str, PermutationGroup]:
         output = []
 
-        for name, (order, symmetries) in self.product_symmetries.items():
+        for name, (degree, symmetries) in self.product_symmetries.items():
             symmetries = [] if symmetries is None else symmetries
-            permutation_group = complete_symmetry_group(order, symmetries)
+            permutation_group = complete_symmetry_group(degree, symmetries)
             output.append((name, permutation_group))
 
         return OrderedDict(output)
@@ -122,9 +127,9 @@ class EventInfo:
     def product_symbolic_groups(self) -> ODict[str, SymbolicPermutationGroup]:
         output = []
 
-        for name, (order, symmetries) in self.product_symmetries.items():
+        for name, (degree, symmetries) in self.product_symmetries.items():
             symmetries = [] if symmetries is None else symmetries
-            permutation_group = complete_symbolic_symmetry_group(order, symmetries)
+            permutation_group = complete_symbolic_symmetry_group(degree, symmetries)
             output.append((name, permutation_group))
 
         return OrderedDict(output)
@@ -144,13 +149,15 @@ class EventInfo:
         return OrderedDict(map(reversed, enumerate(variables)))
 
     @staticmethod
-    def apply_mapping(permutations: Union[str, Permutations], mapping: Dict[str, int]) -> MappedPermutations:
-        # Old style which parses a raw string UNSAFE!
-        if isinstance(permutations, str):
-            return eval(permutations, mapping)
-
+    def apply_mapping(permutations: Permutations, mapping: Dict[str, int]) -> MappedPermutations:
         return [
-            tuple(mapping[key] for key in permutation)
+            [
+                tuple(
+                    mapping[element]
+                    for element in cycle
+                )
+                for cycle in permutation
+            ]
             for permutation in permutations
         ]
 
@@ -225,7 +232,7 @@ class EventInfo:
 
         event_names = tuple(config[SpecialKey.Event].keys())
         event_permutations = key_with_default(permutation_config, SpecialKey.Event, default=[])
-        event_permutations = list(map(tuple, event_permutations))
+        event_permutations = expand_permutations(event_permutations)
         event_particles = Particles(event_names, event_permutations)
 
         product_particles = OrderedDict()
@@ -249,7 +256,7 @@ class EventInfo:
             ]
 
             product_permutations = key_with_default(permutation_config, event_particle, default=[])
-            product_permutations = list(map(tuple, product_permutations))
+            product_permutations = expand_permutations(product_permutations)
 
             product_particles[event_particle] = Particles(product_names, product_permutations, product_sources)
 
