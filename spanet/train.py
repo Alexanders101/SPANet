@@ -46,7 +46,7 @@ def main(
         gpus: Optional[int],
         epochs: Optional[int],
         batch_size: Optional[int],
-        limit_dataset: Optional[int],
+        limit_dataset: Optional[float],
         random_seed: int,
 ):
 
@@ -244,7 +244,7 @@ if __name__ == '__main__':
     parser.add_argument("-f", "--full_events", action='store_true',
                         help="Limit training to only full events.")
 
-    parser.add_argument("-p", "--limit_dataset", type=int, default=None,
+    parser.add_argument("-p", "--limit_dataset", type=float, default=None,
                         help="Limit dataset to only the first L percent of the data (0 - 100).")
 
     parser.add_argument("-r", "--random_seed", type=int, default=0,
