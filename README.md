@@ -98,6 +98,29 @@ you can evaluate the network again on the example dataset by running.
 Note that the included example file is very small and you will likely not
 see very good performance on it.
 
+### Exporting
+
+Once you are happy with your model, you can export it to an [ONNX](https://onnxruntime.ai/) file to use in external applications. This can be done by running `spanet.export` with the log directory and the desired output file. For example: `python -m spanet.export ./spanet_output/version_0 spanet.onnx`.
+
+Note that only the neural network is able to be exported, and this network outputs the full reconstruction distributions for every event. Unfortunately, the reconstruction algorithm defined [here](spanet/network/prediction_selection.py) cannot be exported as part of the ONNX graph. If your target application uses python, then you can simply use SPANet's selection algorithm, but non-python applications must define their own selection algorithm.
+
+The resulting ONNX model will have `2n` inputs, where `n` is the number of sources defined in the event info file. The network requires both the data and mask for all of these inputs to allow for batched inputs with varying jet multiplicities. You may optinally specify `--input-log-transform` in `spanet.export` in order to automatically apply any log transforms to your input features. Otherwise, the user is expected to pre-process the data with the log transform beforehand. Features normalization is stored as part of the network weights and therefore does not need to be applied.
+
+The data inputs must have shapes: `(batch_size, jet_count, feature_count)` and the masks must have shapes `(batch_size, jet_count)` with data type `bool`.
+
+You may examine all of the inputs and outputs with the following snippet:
+```python
+import onnxruntime    # to inference ONNX models, we use the ONNX Runtime
+
+session = onnxruntime.InferenceSession(
+    "./spanet.onnx", 
+    providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+)
+
+print("Inputs:", [input.name for input in session.get_inputs()])
+print("Outputs:", [output.name for output in session.get_outputs()])
+```
+
 ## Citation
 If you use this software for a publication, please cite the following:\
 ```bibtex
