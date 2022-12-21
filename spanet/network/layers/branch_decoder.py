@@ -75,8 +75,9 @@ class BranchDecoder(nn.Module):
         # =========================================================================================
         # Padding mask
         # =========================================================================================
-        padding_mask_operands = [batch_sequence_mask.squeeze() * 1] * self.degree
+        padding_mask_operands = [batch_sequence_mask.squeeze(-1) * 1] * self.degree
         padding_mask = torch.einsum(self.padding_mask_operation, *padding_mask_operands)
+        padding_mask = padding_mask.bool()
 
         # =========================================================================================
         # Diagonal mask
@@ -92,7 +93,7 @@ class BranchDecoder(nn.Module):
             diagonal_mask = diagonal_mask.unsqueeze(0) < (num_jets + 1 - self.degree)
             self.diagonal_masks[(num_jets, output.device)] = diagonal_mask
 
-        return (padding_mask * diagonal_mask).bool()
+        return (padding_mask & diagonal_mask).bool()
 
     def forward(
             self,
@@ -130,7 +131,7 @@ class BranchDecoder(nn.Module):
         # Run the encoded vectors through the classifier.
         # detection: [B, 1]
         # -----------------------------------------------
-        detection = self.detection_classifier(particle_vector).squeeze()
+        detection = self.detection_classifier(particle_vector).squeeze(-1)
 
         # --------------------------------------------------------
         # Extract sequential vectors only for the assignment step.

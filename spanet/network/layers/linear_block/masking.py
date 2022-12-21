@@ -11,7 +11,7 @@ class IdentityMasking(nn.Module):
 # noinspection PyMethodMayBeStatic
 class MultiplicativeMasking(nn.Module):
     def forward(self, values, sequence_mask):
-        return values * sequence_mask
+        return values * sequence_mask.to(values.dtype)
 
 
 # noinspection PyMethodMayBeStatic
