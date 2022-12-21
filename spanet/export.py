@@ -78,16 +78,17 @@ def onnx_specification(model, output_log_transform: bool = False):
                 1: f'num_{input_name}'
             }
 
+    for output_name in model.event_info.event_particles.names:
         if output_log_transform:
-            output_names.append(f"{input_name}_assignment_log_probability")
+            output_names.append(f"{output_name}_assignment_log_probability")
         else:
-            output_names.append(f"{input_name}_assignment_probability")
+            output_names.append(f"{output_name}_assignment_probability")
 
-    for input_name in model.event_info.input_names:
+    for output_name in model.event_info.event_particles.names:
         if output_log_transform:
-            output_names.append(f"{input_name}_detection_log_probability")
+            output_names.append(f"{output_name}_detection_log_probability")
         else:
-            output_names.append(f"{input_name}_detection_probability")
+            output_names.append(f"{output_name}_detection_probability")
 
     for regression in model.training_dataset.regressions.keys():
         output_names.append(regression)
