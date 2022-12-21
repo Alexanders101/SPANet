@@ -5,6 +5,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+import rich
+from rich import progress
+
 from spanet import JetReconstructionModel, Options
 from spanet.dataset.types import Evaluation
 from spanet.network.jet_reconstruction.jet_reconstruction_network import extract_predictions
@@ -23,13 +26,19 @@ def tree_concatenate(tree):
     return output
 
 
-def load_model(log_directory: str,
-               testing_file: Optional[str] = None,
-               event_info_file: Optional[str] = None,
-               batch_size: Optional[int] = None,
-               cuda: bool = False) -> JetReconstructionModel:
+def load_model(
+    log_directory: str,
+    testing_file: Optional[str] = None,
+    event_info_file: Optional[str] = None,
+    batch_size: Optional[int] = None,
+    cuda: bool = False,
+    checkpoint: Optional[str] = None
+) -> JetReconstructionModel:
     # Load the best-performing checkpoint on validation data
-    checkpoint = sorted(glob(f"{log_directory}/checkpoints/epoch*"))[-1]
+    if checkpoint is None:
+        checkpoint = sorted(glob(f"{log_directory}/checkpoints/epoch*"))[-1]
+        print(f"Loading: {checkpoint}")
+
     checkpoint = torch.load(checkpoint, map_location='cpu')
     checkpoint = checkpoint["state_dict"]
 
@@ -46,10 +55,6 @@ def load_model(log_directory: str,
     if batch_size is not None:
         options.batch_size = batch_size
 
-    # We need a testing file defined somewhere to continue
-    if options.testing_file is None or options.testing_file == "":
-        raise ValueError("No testing file found in model options or provided to test.py.")
-
     # Create model and disable all training operations for speed
     model = JetReconstructionModel(options)
     model.load_state_dict(checkpoint)
@@ -63,7 +68,7 @@ def load_model(log_directory: str,
     return model
 
 
-def evaluate_on_test_dataset(model: JetReconstructionModel) -> Evaluation:
+def evaluate_on_test_dataset(model: JetReconstructionModel, progress=progress) -> Evaluation:
     full_assignments = defaultdict(list)
     full_assignment_probabilities = defaultdict(list)
     full_detection_probabilities = defaultdict(list)
@@ -71,7 +76,11 @@ def evaluate_on_test_dataset(model: JetReconstructionModel) -> Evaluation:
     full_classifications = defaultdict(list)
     full_regressions = defaultdict(list)
 
-    for batch in tqdm(model.test_dataloader(), desc="Evaluating Model"):
+    dataloader = model.test_dataloader()
+    if progress:
+        dataloader = progress.track(model.test_dataloader(), description="Evaluating Model")
+
+    for batch in dataloader:
         sources = [[x[0].to(model.device), x[1].to(model.device)] for x in batch.sources]
         outputs = model.forward(sources)
 
