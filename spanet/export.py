@@ -131,7 +131,8 @@ def main(
         sources,
         input_names=input_names,
         output_names=output_names,
-        dynamic_axes=dynamic_axes
+        dynamic_axes=dynamic_axes,
+        opset_version=13
     )
 
 
