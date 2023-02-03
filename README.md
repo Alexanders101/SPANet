@@ -12,6 +12,8 @@ We recently pushed an updated version 2 of this library which adds several new f
 3. New Regression and Classification output heads for performing per-event or per-particle predictions.
 4. Gated transformers and linear layers for more robust networks. Less hyperparameter optimization.
 
+An example demonstrating these new features may be found here: [docs/TTH.md](docs/TTH.md).
+
 ## Installation
 You can install this package to use it outside of the repository after cloning.
 
@@ -63,6 +65,9 @@ define events, construct datasets, and train & evaluate a network.
 for the `ttbar` example](docs/TTBar.md).
 
 The full `ttbar` dataset may be downloaded here: http://mlphysics.ics.uci.edu/data/2021_ttbar/.
+
+We also have a more advanced example demonstrating some of the additinoal inputs and outputs available on a semi-leptonic `ttH` event. [Refer to this page for a detailed walk-through 
+for the `ttH` example](docs/TTH.md).
 
 ## Usage
 Using this library requires setting up several components. 
@@ -122,7 +127,7 @@ print("Outputs:", [output.name for output in session.get_outputs()])
 ```
 
 ## Citation
-If you use this software for a publication, please cite the following:\
+If you use this software for a publication, please cite the following:
 ```bibtex
 @Article{10.21468/SciPostPhys.12.5.178,
 	title={{SPANet: Generalized permutationless set assignment for particle physics  using symmetry preserving attention}},
