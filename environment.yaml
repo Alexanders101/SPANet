@@ -26,6 +26,9 @@ dependencies:
   - torchvision
   - torchaudio
 
+  - tensorboard
+  - tensorboardx
+
   - jupyterlab
   - seaborn
   - rich
