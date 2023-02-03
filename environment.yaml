@@ -1,9 +1,12 @@
+name: spanet
 channels:
   - pytorch
+  - nvidia
   - conda-forge
+  - nodefaults
 
 dependencies:
-  - python=3.9.*
+  - python=3.10.*
   - conda
   - pip
 
@@ -15,12 +18,13 @@ dependencies:
   - h5py
   - cytoolz
 
-  - pytorch
+  - pytorch=1.13.1
+  - pytorch-lightning=1.9.0
+  - pytorch-cuda=11.7
+  - cudatoolkit=11.7
+  - cuda-nvcc
   - torchvision
   - torchaudio
-  - cudatoolkit=11.3
-  - cuda-nvcc
-  - pytorch-lightning
 
   - jupyterlab
   - seaborn
