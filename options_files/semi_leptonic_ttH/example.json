@@ -1,0 +1,68 @@
+{
+    "hidden_dim": 64,
+    "transformer_dim": 64,
+    "initial_embedding_dim": 16,
+    "position_embedding_dim": 32,
+
+    "num_embedding_layers": 10,
+    "num_encoder_layers": 6,
+
+    "num_branch_embedding_layers": 5,
+    "num_branch_encoder_layers": 3,
+
+    "num_jet_embedding_layers": 0,
+    "num_jet_encoder_layers": 1,
+
+    "num_detector_layers": 2,
+    "num_regression_layers": 3,
+    "num_classification_layers": 3,
+
+    "split_symmetric_attention": true,
+    "num_attention_heads": 4,
+    "transformer_activation": "gelu",
+
+    "linear_block_type": "GRU",
+    "transformer_type": "Gated",
+    "linear_activation": "gelu",
+    "normalization": "LayerNorm",
+    "masking": "Filling",
+
+    "skip_connections": true,
+    "initial_embedding_skip_connections": true,
+
+    "event_info_file": "./event_files/semi_leptonic_ttH.yaml",
+    "training_file": "./data/semi_leptonic_ttH/example.h5",
+
+    "normalize_features": true,
+    "limit_to_num_jets": 0,
+    "balance_jets": false,
+    "partial_events": true,
+    "balance_particles": true,
+
+    "dataset_limit": 1.0,
+    "train_validation_split": 0.95,
+    "batch_size": 32,
+    "num_dataloader_workers": 16,
+
+    "mask_sequence_vectors": true,
+    "combine_pair_loss": "min",
+    "optimizer": "AdamW",
+    "focal_gamma": 0.0,
+    "learning_rate": 0.0015,
+    "learning_rate_cycles": 5,
+    "learning_rate_warmup_epochs": 1.0,
+
+    "assignment_loss_scale": 1.0,
+    "detection_loss_scale": 1.0,
+    "kl_loss_scale": 0.0,
+    "regression_loss_scale": 1.0,
+    "classification_loss_scale": 1.0,
+
+    "l2_penalty": 0.0002,
+    "gradient_clip": 0.0,
+    "dropout": 0.0,
+
+    "epochs": 500,
+    "num_gpu": 1,
+    "verbose_output": true
+}

@@ -1,0 +1,66 @@
+INPUTS:
+  SEQUENTIAL:
+    Momenta:
+      mass: log_normalize
+      pt: log_normalize
+      eta: normalize
+
+      sin_phi: normalize
+      cos_phi: normalize
+
+      qtag: none
+      btag: none
+      etag: none
+      utag: none
+
+  # ---------------------------------------------------------------------
+  # REQUIRED - GLOBAL - inputs which will have a single vector per event.
+  # ---------------------------------------------------------------------
+  GLOBAL:
+    Met:
+      met: log_normalize
+      sin_phi: normalize
+      cos_phi: normalize
+
+
+# ----------------------------------------------------------------------
+# REQUIRED - EVENT - Complete list of resonance particles and daughters.
+# ----------------------------------------------------------------------
+EVENT:
+  lt:
+    - b
+
+  ht:
+    - b
+    - q1
+    - q2
+  h:
+    - b1
+    - b2
+
+# ---------------------------------------------------------
+# REQUIRED KEY - PERMUTATIONS - List of valid permutations.
+# ---------------------------------------------------------
+PERMUTATIONS:
+    ht:
+      - [ q1, q2 ]
+    h:
+      - [ b1, b2 ]
+
+# ------------------------------------------------------------------------------
+# REQUIRED - REGRESSIONS - List of desired features to regress from observables.
+# ------------------------------------------------------------------------------
+REGRESSIONS:
+  EVENT:
+    - neutrino_eta
+    - neutrino_px
+    - neutrino_py
+    - neutrino_pz
+    - log_invariant_mass
+
+# ------------------------------------------------------------------------------
+# REQUIRED - CLASSIFICATIONS - List of desired features to regress from observables.
+# ------------------------------------------------------------------------------
+CLASSIFICATIONS:
+  EVENT:
+    - signal
