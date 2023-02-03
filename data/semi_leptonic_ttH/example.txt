@@ -1,0 +1,43 @@
+============================================================
+| Structure for data/semi_leptonic_ttH/example.h5 
+============================================================
+
+|-CLASSIFICATIONS               
+|---EVENT                       
+|-----signal                     :: int64    : (1000,)
+|-INPUTS                        
+|---Met
+|-----met                        :: float32  : (1000,)
+|-----sumet                      :: float32  : (1000,)
+|-----cos_phi                    :: float32  : (1000,)
+|-----sin_phi                    :: float32  : (1000,)
+|---Momenta
+|-----MASK                       :: bool     : (1000, 19)
+|-----cos_phi                    :: float32  : (1000, 19)
+|-----sin_phi                    :: float32  : (1000, 19)
+|-----eta                        :: float32  : (1000, 19)
+|-----mass                       :: float32  : (1000, 19)
+|-----pt                         :: float32  : (1000, 19)
+|-----btag                       :: float32  : (1000, 19)
+|-----qtag                       :: float32  : (1000, 19)
+|-----etag                       :: float32  : (1000, 19)
+|-----utag                       :: float32  : (1000, 19)
+|-REGRESSIONS                   
+|---EVENT                       
+|-----log_invariant_mass         :: float32  : (1000,)
+|-----neutrino_eta               :: float32  : (1000,)
+|-----neutrino_px                :: float32  : (1000,)
+|-----neutrino_py                :: float32  : (1000,)
+|-----neutrino_pz                :: float32  : (1000,)
+|-TARGETS                       
+|---h                           
+|-----b1                         :: int64    : (1000,)
+|-----b2                         :: int64    : (1000,)
+|---ht                          
+|-----b                          :: int64    : (1000,)
+|-----q1                         :: int64    : (1000,)
+|-----q2                         :: int64    : (1000,)
+|---lt                          
+|-----b                          :: int64    : (1000,)
+|-----l                          :: int64    : (1000,)
+
