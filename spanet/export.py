@@ -27,14 +27,13 @@ class WrappedModel(pl.LightningModule):
 
     def apply_input_log_transform(self, sources):
         new_sources = []
-        for (data, mask), name in zip(sources, self.self.model.event_info.input_names):
-            data = torch.clone(data)
+        for (data, mask), name in zip(sources, self.model.event_info.input_names):
+            new_data = torch.stack([
+                mask * torch.log(data[:, :, i] + 1) if log_transformer else data[:, :, i]
+                for i, log_transformer in enumerate(self.model.event_info.log_features(name))
+            ], -1)
 
-            for i, log_transformer in enumerate(self.self.model.event_info.log_features(name)):
-                if log_transformer:
-                    data[:, :, i].log_()
-
-            new_sources.append(Source(data, mask))
+            new_sources.append(Source(new_data, mask))
         return new_sources
 
     def forward(self, sources: List[Source]):
