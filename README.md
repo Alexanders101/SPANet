@@ -109,10 +109,6 @@ Once you are happy with your model, you can export it to an [ONNX](https://onnxr
 
 Note that only the neural network is able to be exported, and this network outputs the full reconstruction distributions for every event. Unfortunately, the reconstruction algorithm defined [here](spanet/network/prediction_selection.py) cannot be exported as part of the ONNX graph. If your target application uses python, then you can simply use SPANet's selection algorithm, but non-python applications must define their own selection algorithm.
 
-The resulting ONNX model will have `2n` inputs, where `n` is the number of sources defined in the event info file. The network requires both the data and mask for all of these inputs to allow for batched inputs with varying jet multiplicities. You may optinally specify `--input-log-transform` in `spanet.export` in order to automatically apply any log transforms to your input features. Otherwise, the user is expected to pre-process the data with the log transform beforehand. Features normalization is stored as part of the network weights and therefore does not need to be applied.
-
-The data inputs must have shapes: `(batch_size, jet_count, feature_count)` and the masks must have shapes `(batch_size, jet_count)` with data type `bool`.
-
 You may examine all of the inputs and outputs with the following snippet:
 ```python
 import onnxruntime    # to inference ONNX models, we use the ONNX Runtime
@@ -125,6 +121,41 @@ session = onnxruntime.InferenceSession(
 print("Inputs:", [input.name for input in session.get_inputs()])
 print("Outputs:", [output.name for output in session.get_outputs()])
 ```
+
+#### Inputs
+
+| Input                     | Shape       | DType |
+|---------------------------|-------------|-------|
+| {sequential_input_1}_data | (B, N1, D1) | float |
+| {sequential_input_1}_mask | (B, N1)     | bool  |
+| {sequential_input_2}_data | (B, N2, D2) | float |
+| {sequential_input_2}_mask | (B, N2)     | bool  |
+| {global_input_1}_data     | (B, 1, D1)  | float |
+| {global_input_1}_mask     | (B, 1)      | bool  |
+| {global_input_2}_data     | (B, 1, D2)  | float |
+| {global_input_2}_mask     | (B, 1)      | bool  |
+
+The ONNX model expects two inputs for every `INPUT` defined in the event file. Replace the values in the braces with their appropriate names. The data contains the features for each input. The features must be provided in the **exact order** that they are defined in the event file. Notice that global inputs require a dummy axis to be added to match the overall shape of the sequential inputs. 
+
+**Log Features:** Any features marked either `log` or `log_normalize` must have the following preprocessing transformation applied `f(x) -> log(x + 1)`. You can skip this log preprocessing and have it performed by the network if you specify `--input-log-transform`. However, this operation is expensive to perform by the graph, so we recommend you apply it during your data pipeline for maximum efficiency.
+
+#### Outputs
+| Output                                    | Shape          | DType |
+|-------------------------------------------|----------------|-------|
+| {event_particle_1}_assignment_probability | (B, N, N, ...) | float |
+| {event_particle_2}_assignment_probability | (B, N, N, ...) | float |
+| {event_particle_1}_detection_probability  | (B)            | float |
+| {event_particle_2}_detection_probability  | (B)            | float |
+| {regression_target_1}                     | (B)            | float |
+| {regression_target_2}                     | (B)            | float |
+| {classification_target_1}                 | (B, C)         | float |
+| {classification_target_2}                 | (B, C)         | float |
+
+The ONNX model may produce any of the valid output heads. Each event partile defined produces an assignment distribution for its reconstruction. This distribution with be a singlet/doublet/triplet/etc. joint distribution depending on the number of decay products defined for each particle. The shape will reflect this number of products. For example, if a particle has two decay products, then its `assignment_log_probability` will have a shape of `(B, N, N)`. Each particle also has associated with it a `detection probability` which indicates how likely the particle is to be reconstructable.
+
+The additional outputs will only be present if you define any `REGRESSION` or `CLASSIFICATION` outputs in the event file. Each of the definitions will be add an extra output. The regression outputs simply contain the predicted value for each regression target. The classification outputs contain a distribution over possible classes for each target.
+
+**Log Probability vs. Probability** For additional numerical stability, you may choose to output the log distributions, `log P(x)`, for all probability outputs instead. If you specify `--output-log-transform` in the export script, then the `*_assignment_probability` and `*_detection_probability` outputs will be replaced with `*_assignment_log_probability` and `*_detection_log_probability`. The classification outputs will also be represented as log-probabilities, although the name will not change.
 
 ## Citation
 If you use this software for a publication, please cite the following:

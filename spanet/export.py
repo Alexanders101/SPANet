@@ -45,18 +45,24 @@ class WrappedModel(pl.LightningModule):
         if self.output_log_transform:
             assignments = [assignment for assignment in outputs.assignments]
             detections = [F.logsigmoid(detection) for detection in outputs.detections]
+
+            classifications = [
+                F.log_softmax(outputs.classifications[key], dim=-1)
+                for key in self.model.training_dataset.classifications.keys()
+            ]
+
         else:
             assignments = [assignment.exp() for assignment in outputs.assignments]
             detections = [torch.sigmoid(detection) for detection in outputs.detections]
 
+            classifications = [
+                F.softmax(outputs.classifications[key], dim=-1)
+                for key in self.model.training_dataset.classifications.keys()
+            ]
+
         regressions = [
             outputs.regressions[key]
             for key in self.model.training_dataset.regressions.keys()
-        ]
-
-        classifications = [
-            outputs.classifications[key]
-            for key in self.model.training_dataset.classifications.keys()
         ]
 
         return *assignments, *detections, *regressions, *classifications
