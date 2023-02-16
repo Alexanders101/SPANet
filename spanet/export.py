@@ -17,13 +17,15 @@ class WrappedModel(pl.LightningModule):
             self,
             model: JetReconstructionModel,
             input_log_transform: bool = False,
-            output_log_transform: bool = False
+            output_log_transform: bool = False,
+            output_embeddings: bool = False
     ):
         super(WrappedModel, self).__init__()
 
         self.model = model
         self.input_log_transform = input_log_transform
         self.output_log_transform = output_log_transform
+        self.output_embeddings = output_embeddings
 
     def apply_input_log_transform(self, sources):
         new_sources = []
@@ -65,10 +67,12 @@ class WrappedModel(pl.LightningModule):
             for key in self.model.training_dataset.regressions.keys()
         ]
 
-        return *assignments, *detections, *regressions, *classifications
+        embedding_vectors = list(outputs.vectors.values()) if self.output_embeddings else []
+
+        return *assignments, *detections, *regressions, *classifications, *embedding_vectors
 
 
-def onnx_specification(model, output_log_transform: bool = False):
+def onnx_specification(model, output_log_transform: bool = False, output_embeddings: bool = False):
     input_names = []
     output_names = []
 
@@ -101,6 +105,15 @@ def onnx_specification(model, output_log_transform: bool = False):
     for classification in model.training_dataset.classifications.keys():
         output_names.append(classification)
 
+    if output_embeddings:
+        output_names.append("EVENT/embedding_vector")
+
+        for particle, products in model.event_info.product_particles.items():
+            output_names.append(f"{particle}/PARTICLE/embedding_vector")
+
+            for product in products:
+                output_names.append(f"{particle}/{product}/embedding_vector")
+
     return input_names, output_names, dynamic_axes
 
 
@@ -109,18 +122,19 @@ def main(
         output_file: str,
         input_log_transform: bool,
         output_log_transform: bool,
+        output_embeddings: bool,
         gpu: bool
 ):
     model = load_model(log_directory, cuda=gpu)
 
     # Create wrapped model with flat inputs and outputs
-    wrapped_model = WrappedModel(model, input_log_transform, output_log_transform)
+    wrapped_model = WrappedModel(model, input_log_transform, output_log_transform, output_embeddings)
     wrapped_model.to(model.device)
     wrapped_model.eval()
     for parameter in wrapped_model.parameters():
         parameter.requires_grad_(False)
 
-    input_names, output_names, dynamic_axes = onnx_specification(model, output_log_transform)
+    input_names, output_names, dynamic_axes = onnx_specification(model, output_log_transform, output_embeddings)
 
     batch = next(iter(model.train_dataloader()))
     sources = batch.sources
@@ -157,6 +171,9 @@ if __name__ == '__main__':
 
     parser.add_argument("--output-log-transform", action="store_true",
                         help="Exported model will output log probabilities. This is more numerically stable.")
+
+    parser.add_argument("--output-embeddings", action="store_true",
+                        help="Exported model will also output the embeddings for every part of the event.")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)

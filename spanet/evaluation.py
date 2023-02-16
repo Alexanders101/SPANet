@@ -1,29 +1,38 @@
 from glob import glob
-from typing import Optional
+from typing import Optional, Union, Tuple
 
 import numpy as np
 import torch
-from tqdm import tqdm
+from torch.utils._pytree import tree_flatten, tree_unflatten, tree_map
 
-import rich
 from rich import progress
 
 from spanet import JetReconstructionModel, Options
-from spanet.dataset.types import Evaluation
+from spanet.dataset.types import Evaluation, Outputs, Source
 from spanet.network.jet_reconstruction.jet_reconstruction_network import extract_predictions
 
 from collections import defaultdict
 
 
-def tree_concatenate(tree):
+def dict_concatenate(tree):
     output = {}
     for key, value in tree.items():
         if isinstance(value, dict):
-            output[key] = tree_concatenate(value)
+            output[key] = dict_concatenate(value)
         else:
             output[key] = np.concatenate(value)
 
     return output
+
+
+def tree_concatenate(trees):
+    leaves = []
+    for tree in trees:
+        data, tree_spec = tree_flatten(tree)
+        leaves.append(data)
+
+    results = [np.concatenate(l) for l in zip(*leaves)]
+    return tree_unflatten(results, tree_spec)
 
 
 def load_model(
@@ -68,7 +77,11 @@ def load_model(
     return model
 
 
-def evaluate_on_test_dataset(model: JetReconstructionModel, progress=progress) -> Evaluation:
+def evaluate_on_test_dataset(
+        model: JetReconstructionModel,
+        progress=progress,
+        return_full_output: bool = True
+) -> Union[Evaluation, Tuple[Evaluation, Outputs]]:
     full_assignments = defaultdict(list)
     full_assignment_probabilities = defaultdict(list)
     full_detection_probabilities = defaultdict(list)
@@ -76,12 +89,14 @@ def evaluate_on_test_dataset(model: JetReconstructionModel, progress=progress) -
     full_classifications = defaultdict(list)
     full_regressions = defaultdict(list)
 
+    full_outputs = []
+
     dataloader = model.test_dataloader()
     if progress:
         dataloader = progress.track(model.test_dataloader(), description="Evaluating Model")
 
     for batch in dataloader:
-        sources = [[x[0].to(model.device), x[1].to(model.device)] for x in batch.sources]
+        sources = tuple(Source(x[0].to(model.device), x[1].to(model.device)) for x in batch.sources)
         outputs = model.forward(sources)
 
         assignment_indices = extract_predictions([
@@ -135,11 +150,19 @@ def evaluate_on_test_dataset(model: JetReconstructionModel, progress=progress) -
         for key, classification in classifications.items():
             full_classifications[key].append(classification)
 
-    return Evaluation(
-        tree_concatenate(full_assignments),
-        tree_concatenate(full_assignment_probabilities),
-        tree_concatenate(full_detection_probabilities),
-        tree_concatenate(full_regressions),
-        tree_concatenate(full_classifications)
+        if return_full_output:
+            full_outputs.append(tree_map(lambda x: x.cpu().numpy(), outputs))
+
+    evaluation = Evaluation(
+        dict_concatenate(full_assignments),
+        dict_concatenate(full_assignment_probabilities),
+        dict_concatenate(full_detection_probabilities),
+        dict_concatenate(full_regressions),
+        dict_concatenate(full_classifications)
     )
+
+    if return_full_output:
+        return evaluation, tree_concatenate(full_outputs)
+
+    return evaluation
 
