@@ -158,6 +158,7 @@ class Batch(NamedTuple):
 class Outputs(NamedTuple):
     assignments: List[Tensor]
     detections: List[Tensor]
+    vectors: Dict[str, Tensor]
     regressions: Dict[str, Tensor]
     classifications: Dict[str, Tensor]
 

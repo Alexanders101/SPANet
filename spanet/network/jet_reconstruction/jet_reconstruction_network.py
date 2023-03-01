@@ -113,35 +113,36 @@ class JetReconstructionNetwork(JetReconstructionBase):
         return Outputs(
             assignments,
             detections,
+            encoded_vectors,
             regressions,
             classifications
         )
 
     def predict(self, sources: Tuple[Source, ...]) -> Predictions:
         with torch.no_grad():
-            assignments, detections, regressions, classifications = self.forward(sources)
+            outputs = self.forward(sources)
 
             # Extract assignment probabilities and find the least conflicting assignment.
             assignments = extract_predictions([
                 np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)
-                for assignment in assignments
+                for assignment in outputs.assignments
             ])
 
             # Convert detection logits into probabilities and move to CPU.
             detections = np.stack([
                 torch.sigmoid(detection).cpu().numpy()
-                for detection in detections
+                for detection in outputs.detections
             ])
 
             # Move regressions to CPU and away from torch.
             regressions = {
                 key: value.cpu().numpy()
-                for key, value in regressions.items()
+                for key, value in outputs.regressions.items()
             }
 
             classifications = {
                 key: value.cpu().argmax(1).numpy()
-                for key, value in classifications.items()
+                for key, value in outputs.classifications.items()
             }
 
         return Predictions(
@@ -156,7 +157,7 @@ class JetReconstructionNetwork(JetReconstructionBase):
         with torch.no_grad():
             assignments = [
                 np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)
-                for assignment in self.forward(sources)[0]
+                for assignment in self.forward(sources).assignments
             ]
 
         # Find the optimal selection of jets from the output distributions.
