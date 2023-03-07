@@ -80,7 +80,7 @@ def load_model(
 def evaluate_on_test_dataset(
         model: JetReconstructionModel,
         progress=progress,
-        return_full_output: bool = True
+        return_full_output: bool = False
 ) -> Union[Evaluation, Tuple[Evaluation, Outputs]]:
     full_assignments = defaultdict(list)
     full_assignment_probabilities = defaultdict(list)
