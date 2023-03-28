@@ -5,14 +5,15 @@ from numpy import ndarray as Array
 import h5py
 
 from spanet.dataset.jet_reconstruction_dataset import JetReconstructionDataset
-from spanet.dataset.types import Evaluation, SpecialKey
+from spanet.dataset.types import Evaluation, SpecialKey, Outputs
 from spanet.evaluation import evaluate_on_test_dataset, load_model
 
 
 def create_hdf5_output(
     output_file: str,
     dataset: JetReconstructionDataset,
-    evaluation: Evaluation
+    evaluation: Evaluation,
+    full_outputs: Optional[Outputs]
 ):
     print(f"Creating output file at: {output_file}")
     with h5py.File(output_file, 'w') as output:
@@ -58,17 +59,27 @@ def create_hdf5_output(
         for name, classification in evaluation.classifications.items():
             output.create_dataset(f"{SpecialKey.Classifications}/{name}", data=classification)
 
+        if full_outputs is not None:
+            for name, vector in full_outputs.vectors.items():
+                output.create_dataset(f"{SpecialKey.Embeddings}/{name}", data=vector)
+
 
 def main(log_directory: str,
          output_file: str,
          test_file: Optional[str],
          event_file: Optional[str],
          batch_size: Optional[int],
+         output_vectors: bool,
          gpu: bool):
     model = load_model(log_directory, test_file, event_file, batch_size, gpu)
 
-    evaluation = evaluate_on_test_dataset(model)
-    create_hdf5_output(output_file, model.testing_dataset, evaluation)
+    if output_vectors:
+        evaluation, full_outputs = evaluate_on_test_dataset(model, return_full_output=True)
+    else:
+        evaluation = evaluate_on_test_dataset(model, return_full_output=False)
+        full_outputs = None
+
+    create_hdf5_output(output_file, model.testing_dataset, evaluation, full_outputs)
 
 
 if __name__ == '__main__':
@@ -91,6 +102,9 @@ if __name__ == '__main__':
 
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="Evaluate network on the gpu.")
+
+    parser.add_argument("-v", "--output_vectors", action="store_true",
+                        help="Include embedding vectors in output in an additional section of the HDF5.")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)

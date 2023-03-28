@@ -124,6 +124,7 @@ class SpecialKey(str, Enum):
     Regressions = "REGRESSIONS"
     Permutations = "PERMUTATIONS"
     Classifications = "CLASSIFICATIONS"
+    Embeddings = "EMBEDDINGS"
 
 
 class Source(NamedTuple):
