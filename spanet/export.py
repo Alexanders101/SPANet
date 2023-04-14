@@ -144,6 +144,8 @@ def main(
 
     print("-" * 60)
     print(f"Compiling network to ONNX model: {output_file}")
+    if not input_log_transform:
+        print("WARNING -- No input log transform! User must apply log transform manually. -- WARNING")
     print("-" * 60)
     wrapped_model.to_onnx(
         output_file,
