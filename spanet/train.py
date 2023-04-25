@@ -6,7 +6,7 @@ import json
 
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.profiler import PyTorchProfiler
+from pytorch_lightning.profilers import PyTorchProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.strategies import DDPStrategy, DDPFullyShardedStrategy
 from pytorch_lightning.utilities.imports import _RICH_AVAILABLE
