@@ -10,7 +10,7 @@ dependencies:
   - conda
   - pip
 
-  - numpy
+  - numpy=1.23
   - sympy
   - scikit-learn
   - numba
