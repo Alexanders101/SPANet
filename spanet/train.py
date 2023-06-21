@@ -6,10 +6,10 @@ import json
 
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.profiler import PyTorchProfiler
+from pytorch_lightning.profilers import PyTorchProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.strategies import DDPStrategy, DDPFullyShardedStrategy
-from pytorch_lightning.utilities.imports import _RICH_AVAILABLE
+from pytorch_lightning.strategies import DDPStrategy, fsdp, single_device
+from pytorch_lightning.callbacks.progress.rich_progress import _RICH_AVAILABLE
 from pytorch_lightning.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
@@ -133,16 +133,12 @@ def main(
 
     # If we are using more than one gpu, then switch to DDP training
     # distributed_backend = 'dp' if options.num_gpu > 1 else None
-    distributed_backend = None
+    distributed_backend = "auto"
     if options.num_gpu > 1:
         if fairscale:
-            distributed_backend = DDPFullyShardedStrategy(
-                reshard_after_forward=False
-            )
+            distributed_backend = fsdp.FSDPStrategy()
         else:
-            distributed_backend = DDPStrategy(
-                find_unused_parameters=False
-            )
+            distributed_backend = DDPStrategy()
 
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
     log_dir = getcwd() if log_dir is None else log_dir
@@ -173,11 +169,9 @@ def main(
     trainer = pl.Trainer(logger=logger,
                          max_epochs=epochs,
                          callbacks=callbacks,
-                         resume_from_checkpoint=checkpoint,
                          strategy=distributed_backend,
                          accelerator="gpu" if options.num_gpu > 0 else None,
                          devices=options.num_gpu if options.num_gpu > 0 else None,
-                         track_grad_norm=2 if options.verbose_output else -1,
                          gradient_clip_val=options.gradient_clip if options.gradient_clip > 0 else None,
                          precision=16 if fp16 else 32,
                          profiler=profiler)
@@ -192,7 +186,7 @@ def main(
 
         shutil.copy2(options.event_info_file, f"{trainer.logger.log_dir}/event.yaml")
 
-    trainer.fit(model)
+    trainer.fit(model, ckpt_path=checkpoint)
     # -------------------------------------------------------------------------------------------------------
 
 
