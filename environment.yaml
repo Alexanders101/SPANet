@@ -19,7 +19,7 @@ dependencies:
   - cytoolz
 
   - pytorch=1.13.1
-  - pytorch-lightning=1.9.0
+  - pytorch-lightning=2.0.3
   - pytorch-cuda=11.7
   - cudatoolkit=11.7
   - cuda-nvcc
