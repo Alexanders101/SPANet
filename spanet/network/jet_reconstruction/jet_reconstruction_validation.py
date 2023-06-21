@@ -147,13 +147,5 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         return metrics
 
-    def on_validation_epoch_end(self, outputs):
-        # Optionally use this accuracy score for something like hyperparameter search
-        # validation_accuracy = sum(x['validation_accuracy'] for x in outputs) / len(outputs)
-
-        if self.options.verbose_output:
-            for name, parameter in self.named_parameters():
-                self.logger.experiment.add_histogram(name, parameter)
-
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
