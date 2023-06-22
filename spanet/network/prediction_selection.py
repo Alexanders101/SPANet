@@ -211,7 +211,7 @@ def extract_prediction(predictions, num_partons, max_jets):
 @njit(numba.types.Tuple((TIResults, TFResults))(TPredictions, TInt64[::1], TInt64, TInt64), parallel=True)
 def _extract_predictions(predictions, num_partons, max_jets, batch_size):
     output = np.zeros((batch_size, len(predictions), num_partons.max()), np.int64)
-    weight = np.zeros((batch_size, len(predictions), num_partons.max()), np.int64)
+    weight = np.zeros((batch_size, len(predictions), num_partons.max()), np.float32)
     predictions = [p.copy() for p in predictions]
 
     for batch in numba.prange(batch_size):
