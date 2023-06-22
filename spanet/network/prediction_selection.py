@@ -9,11 +9,11 @@ TArray = np.ndarray
 TFloat32 = numba.types.float32
 TInt64 = numba.types.int64
 
-TPrediction = numba.typed.typedlist.ListType(TFloat32[::1])
-TPredictions = numba.typed.typedlist.ListType(TFloat32[:, ::1])
+TPrediction = numba.types.Array(TFloat32, 1, 'C') 
+TPredictions = numba.types.Array(TFloat32, 2, 'C') 
 
-TResult = numba.types.Tuple((TInt64[:, ::1], TFloat32[:, ::1]))
-TResults = numba.types.Tuple((TInt64[:, :, ::1], TFloat32[:, :, ::1]))
+TResult = numba.types.Array(TInt64, 2, 'C'), numba.types.Array(TFloat32, 2, 'C') 
+TResults = numba.types.Array(TInt64, 3, 'C'), numba.types.Array(TFloat32, 3, 'C') 
 
 NUMBA_DEBUG = False
 
