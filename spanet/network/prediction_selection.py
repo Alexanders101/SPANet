@@ -228,12 +228,11 @@ def extract_predictions(predictions: List[TArray]):
     batch_size = max(p.shape[0] for p in predictions)
 
     max_partons = np.max(num_partons)
-    results = np.zeros((predictions.shape[0], predictions.shape[1], 3, max_partons))
-    weights = np.zeros((predictions.shape[0], predictions.shape[1], 3, max_partons))
+    results = np.zeros((len(predictions), len(predictions[0]), 3, max_partons))
+    weights = np.zeros((len(predictions), len(predictions[0]), 3, max_partons))
     for i in range(max_partons):
-        temp_predictions = predictions.copy()
-        parton_slice = temp_predictions[:,:,:,:,i]
-        for j in range(2):
+        parton_slice = np.array(predictions)[:,:,:,:,i]
+        for j in range(parton_slice.shape[1]):
             for k in range(len(parton_slice[0])):
                 max_indices = np.argmax(parton_slice[j,k], axis=1)
                 for l, max_index in enumerate(max_indices):
