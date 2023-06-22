@@ -202,7 +202,7 @@ def extract_prediction(predictions, num_partons, max_jets):
             for jet in best_jets:
                 mask_jet(predictions[i], num_partons[i], max_jets, jet, float_negative_inf)
 
-    return results, results_weight
+    return results, results_weights
 
 
 @njit(TResults(TPredictions, TInt64[::1], TInt64, TInt64), parallel=True)
