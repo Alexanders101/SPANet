@@ -170,8 +170,8 @@ def main(
                          max_epochs=epochs,
                          callbacks=callbacks,
                          strategy=distributed_backend,
-                         accelerator="gpu" if options.num_gpu > 0 else None,
-                         devices=options.num_gpu if options.num_gpu > 0 else None,
+                         accelerator="gpu" if options.num_gpu > 0 else "cpu",
+                         devices=options.num_gpu if options.num_gpu > 0 else 1,
                          gradient_clip_val=options.gradient_clip if options.gradient_clip > 0 else None,
                          precision=16 if fp16 else 32,
                          profiler=profiler)
