@@ -9,11 +9,14 @@ TArray = np.ndarray
 TFloat32 = numba.types.float32
 TInt64 = numba.types.int64
 
-TPrediction = numba.types.Array(TFloat32, 1, 'C') 
-TPredictions = numba.types.Array(TFloat32, 2, 'C') 
+TPrediction = numba.typed.typedlist.ListType(TFloat32[::1])
+TPredictions = numba.typed.typedlist.ListType(TFloat32[:, ::1])
 
-TResult = numba.types.Array(TInt64, 2, 'C'), numba.types.Array(TFloat32, 2, 'C') 
-TResults = numba.types.Array(TInt64, 3, 'C'), numba.types.Array(TFloat32, 3, 'C') 
+TIResult = TInt64[:, ::1]
+TIResults = TInt64[:, :, ::1]
+
+TFResult = TFloat32[:, ::1]
+TFResults = TFloat32[:, :, ::1]
 
 NUMBA_DEBUG = False
 
@@ -165,7 +168,7 @@ def maximal_prediction(predictions):
     return best_jet, best_prediction, best_value
 
 
-@njit(TResult(TPrediction, TInt64[::1], TInt64))
+@njit(numba.types.Tuple((TIResult, TFResult))(TPrediction, TInt64[::1], TInt64))
 def extract_prediction(predictions, num_partons, max_jets):
     float_negative_inf = -np.float32(np.inf)
     max_partons = num_partons.max()
@@ -205,7 +208,7 @@ def extract_prediction(predictions, num_partons, max_jets):
     return results, results_weights
 
 
-@njit(TResults(TPredictions, TInt64[::1], TInt64, TInt64), parallel=True)
+@njit(numba.types.Tuple((TIResults, TFResults))(TPredictions, TInt64[::1], TInt64, TInt64), parallel=True)
 def _extract_predictions(predictions, num_partons, max_jets, batch_size):
     output = np.zeros((batch_size, len(predictions), num_partons.max()), np.int64)
     weight = np.zeros((batch_size, len(predictions), num_partons.max()), np.int64)
