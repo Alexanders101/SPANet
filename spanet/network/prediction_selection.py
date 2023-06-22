@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List
 import numpy as np
 
 import numba
@@ -12,8 +12,8 @@ TInt64 = numba.types.int64
 TPrediction = numba.typed.typedlist.ListType(TFloat32[::1])
 TPredictions = numba.typed.typedlist.ListType(TFloat32[:, ::1])
 
-TResult = Tuple((TInt64[:, ::1], TFloat32[:, ::1]))
-TResults = Tuple((TInt64[:, :, ::1], TFloat32[:, :, ::1]))
+TResult = numba.types.Tuple((TInt64[:, ::1], TFloat32[:, ::1]))
+TResults = numba.types.Tuple((TInt64[:, :, ::1], TFloat32[:, :, ::1]))
 
 NUMBA_DEBUG = False
 
