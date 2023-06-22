@@ -243,7 +243,11 @@ def extract_predictions(predictions: List[TArray]):
         result, weight = _extract_predictions(temp_predictions, num_partons, max_jets, batch_size)
         results[:,:,:,i] = result
         weights[:,:,:,i] = weight
-
-    #INCOMPLETE
+    
+    max_result = np.zeros_like(results)
+    for i in range(results.shape[1]):
+        temp_result = results[:,i,:,:]
+        max_result[:,i,:] = temp_result[:,:,np.argmax(np.sum(np.prod(temp_result, axis=(0,1)),0))]
+        
         
     return [max_result[:partons] for max_result, partons in zip(max_results.T, num_partons)]
