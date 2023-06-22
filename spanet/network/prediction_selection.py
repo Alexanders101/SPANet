@@ -120,7 +120,7 @@ def mask_jet(data, num_partons, max_jets, index, value):
     #     mask_8(data, max_jets, index, value)
 
 
-@njit("int64[::1](int64, int64, int64)")
+@njit("int64[::1](int64, int64)")
 def compute_strides(num_partons, max_jets):
     strides = np.zeros(num_partons, dtype=np.int64)
     strides[-1] = 1
