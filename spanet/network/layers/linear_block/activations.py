@@ -1,6 +1,9 @@
 import torch
 from torch import nn
 
+class CustomActivationFunction(nn.Module):
+    def forward(self, x):
+        return torch.relu(x + torch.sin(x) ** 2)
 
 def create_activation(activation: str, input_dim: int) -> nn.Module:
     activation = activation.lower().replace("_", "").replace(" ", "")
@@ -15,6 +18,8 @@ def create_activation(activation: str, input_dim: int) -> nn.Module:
         return nn.CELU()
     elif activation == "gelu":
         return nn.GELU()
+    elif activation == "sinlu":
+        return CustomActivationFunction()
     else:
         return nn.Identity()
 
