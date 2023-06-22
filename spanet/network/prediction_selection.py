@@ -230,7 +230,7 @@ def extract_predictions(predictions: List[TArray]):
     max_partons = np.max(num_partons)
     results = np.zeros((len(predictions), len(predictions[0]), 3, max_partons))
     weights = np.zeros((len(predictions), len(predictions[0]), 3, max_partons))
-    original_weights = np.zeros((len(predictions), len(predictions[0], max_partons))
+    original_weights = np.zeros((len(predictions), len(predictions[0]))
     for i in range(max_partons):
         temp_predictions = np.array(predictions).copy()
         parton_slice = temp_predictions[:,:,:,:,i]
@@ -238,17 +238,16 @@ def extract_predictions(predictions: List[TArray]):
             for k in range(parton_slice.shape[1]):
                 max_indices = np.argmax(parton_slice[j,k])
                 index_2D = np.unravel_index(max_indices, parton_slice[j,k].shape)
-                original_weights[j, k, i] = parton_slice[j, k, index_2D[0], index_2D[1]]
+                original_weights[j, k] = parton_slice[j, k, index_2D[0], index_2D[1]]
                 parton_slice[j, k, index_2D[0], index_2D[1]] = 999
         temp_predictions[:,:,:,:,i] = parton_slice
         temp_predictions_list = numba.typed.List([p.reshape((p.shape[0], -1)) for p in temp_predictions])
         result, weight = _extract_predictions(temp_predictions_list, num_partons, max_jets, batch_size)
         for l in range(len(weight)):
             for m in range(len(weight[0])):
-                for n in range(max_partons):
-                    temp_weight = weight[l, m, n]
-                    temp_weight[temp_weight = 999] = original_weights[l, m, n]
-                    weight[l, m, n] = temp_weight
+                temp_weight = weight[l, m, :]
+                temp_weight[temp_weight == 999] = original_weights[l, m]
+                weight[l, m, :] = temp_weight
         results[:,:,:,i] = result
         weights[:,:,:,i] = weight
     
