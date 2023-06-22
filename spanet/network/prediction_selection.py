@@ -228,21 +228,22 @@ def extract_predictions(predictions: List[TArray]):
     batch_size = max(p.shape[0] for p in predictions)
 
     max_partons = np.max(num_partons)
-    results = np.zeros((max_partons, len(num_partons), max_partons))
-    weights = np.zeros((max_partons, len(num_partons), max_partons))
+    results = np.zeros((predictions.shape[0], predictions.shape[1], 3, max_partons))
+    weights = np.zeros((predictions.shape[0], predictions.shape[1], 3, max_partons))
     for i in range(max_partons):
-        temp_predictions = flat_predictions.copy()
-        slice = temp_predictions[:,i*jets*jets:(i+1*jets*jets)]
-        for j in range(len(slice)):
-            mini_slice = slice[j]
-            max_indices = np.argmax(mini_slice, axis=1)
-            mini_slice[max_indices] = 999
-            temp_predictions[j,i*jets*jets:(i+1*jets*jets)] = slice
+        temp_predictions = predictions.copy()
+        parton_slice = temp_predictions[:,:,:,:,i]
+        for j in range(2):
+            for k in range(len(parton_slice[0])):
+                max_indices = np.argmax(parton_slice[j,k], axis=1)
+                for l, max_index in enumerate(max_indices):
+                    parton_slice[j, k, l, max_index] = 999
+        temp_predictions[:,:,:,:,i] = parton_slice
+        temp_predictions = numba.typed.List([p.reshape((p.shape[0], -1)) for p in predictions])
         result, weight = _extract_predictions(temp_predictions, num_partons, max_jets, batch_size)
-        results[i,:,:] = result
-        weights[i,:,:] = weight
-        
-    max_weight_indices = np.argmax(np.prod(weights, axis=0), axis=0)
-    max_results = np.take_along_axis(results, np.expand_dims(max_weight_indices, axis=0), axis=0).squeeze()
+        results[:,:,:,i] = result
+        weights[:,:,:,i] = weight
+
+    #INCOMPLETE
         
     return [max_result[:partons] for max_result, partons in zip(max_results.T, num_partons)]
