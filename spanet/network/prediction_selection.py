@@ -234,8 +234,9 @@ def extract_predictions(predictions: List[TArray]):
         temp_predictions = np.array(predictions).copy()
         parton_slice = temp_predictions[:,:,:,:,i]
         for j in range(parton_slice.shape[0]):
-            max_indices = np.argmax(parton_slice[j,k])
-            parton_slice[j, k, max_indices[0], max_indices[1]] = 999
+            for k in range(parton_slice.shape[1]):
+                max_indices = np.argmax(parton_slice[j,k])
+                parton_slice[j, k, max_indices[0], max_indices[1]] = 999
         temp_predictions[:,:,:,:,i] = parton_slice
         temp_predictions = numba.typed.List([p.reshape((p.shape[0], -1)) for p in predictions])
         result, weight = _extract_predictions(temp_predictions, num_partons, max_jets, batch_size)
