@@ -13,6 +13,7 @@ class Options(Namespace):
         # Dimensions used internally by all hidden layers / transformers.
         self.hidden_dim: int = 128
 
+        # DEPRECATED
         # Internal dimensions used during transformer and some linear layers.
         self.transformer_dim: int = 128
 
@@ -83,8 +84,9 @@ class Options(Namespace):
         # Basic
         # Resnet
         # Gated
+        # GRU
         # -------------------------------------------------
-        self.linear_block_type: str = "Basic"
+        self.linear_block_type: str = "GRU"
 
         # Structure for transformer layer
         #
@@ -94,7 +96,7 @@ class Options(Namespace):
         # NormFirst
         # Gated
         # -------------------------------------------------
-        self.transformer_type: str = "Standard"
+        self.transformer_type: str = "Gated"
 
         # Non-linearity to use inside of the linear blocks.
         #
@@ -106,7 +108,7 @@ class Options(Namespace):
         # ELU
         # GELU
         # -------------------------------------------------
-        self.linear_activation: str = "PReLU"
+        self.linear_activation: str = "GELU"
 
         # Whether or not to apply a normalization layer during linear / embedding layers.
         #
@@ -187,14 +189,20 @@ class Options(Namespace):
         self.mask_sequence_vectors: bool = True
 
         # Whether we should combine the two possible targets: swapped and not-swapped.
-        # Current options are 'min', and 'mean'.
         # If None, then we will only use the proper target ordering.
+        #
+        # Options are:
+        # -------------------------------------------------
+        # None
+        # min
+        # softmin
+        # mean
+        # -------------------------------------------------
         self.combine_pair_loss: str = 'min'
-        # self.combine_pair_loss: str = 'mean'
 
         # The optimizer to use for trianing the network.
         # This must be a valid class in torch.optim or nvidia apex with 'apex' prefix.
-        self.optimizer: str = "apex_lamb"
+        self.optimizer: str = "AdamW"
 
         # Optimizer learning rate.
         self.learning_rate: float = 0.001
