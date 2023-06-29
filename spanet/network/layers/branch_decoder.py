@@ -6,8 +6,8 @@ from torch import Tensor, nn, jit
 
 from spanet.options import Options
 from spanet.dataset.types import Symmetries
-# from spanet.network.utilities import masked_log_softmax
-from spanet.network.utilities import masked_softmax
+from spanet.network.utilities import masked_log_softmax
+# from spanet.network.utilities import masked_softmax
 from spanet.network.layers.stacked_encoder import StackedEncoder
 from spanet.network.layers.branch_linear import BranchLinear
 from spanet.network.symmetric_attention import SymmetricAttentionSplit, SymmetricAttentionFull
@@ -171,8 +171,8 @@ class BranchDecoder(nn.Module):
             assignment = assignment.reshape(batch_size, -1)
             assignment_mask = assignment_mask.reshape(batch_size, -1)
 
-            # assignment = masked_log_softmax(assignment, assignment_mask)
-            assignment = masked_softmax(assignment, assignment_mask)
+            assignment = masked_log_softmax(assignment, assignment_mask)
+            # assignment = masked_softmax(assignment, assignment_mask)
             assignment = assignment.view(*original_shape)
 
             # mask = mask.view(*original_shape)
