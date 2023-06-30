@@ -15,8 +15,8 @@ TPredictions = numba.typed.typedlist.ListType(TFloat32[:, ::1])
 TIResult = TInt64[:, ::1]
 TIResults = TInt64[:, :, ::1]
 
-TFResult = TFloat32[:, ::1]
-TFResults = TFloat32[:, :, ::1]
+TFResult = TFloat32[::1]
+TFResults = TFloat32[:, ::1]
 
 NUMBA_DEBUG = False
 
@@ -184,7 +184,7 @@ def extract_prediction(predictions, num_partons, max_jets):
     # -1 : Masked value
     # else : The actual index value
     results = np.zeros((num_targets, max_partons), np.int64) - 2
-    results_weights = np.zeros((num_targets, max_partons), dtype=np.float32) - np.float32(np.inf)
+    results_weights = np.zeros(num_targets, dtype=np.float32) - np.float32(np.inf)
 
     for _ in range(num_targets):
         best_jet, best_prediction, best_value = maximal_prediction(predictions)
@@ -195,10 +195,10 @@ def extract_prediction(predictions, num_partons, max_jets):
         best_jets = unravel_index(best_jet, strides[best_prediction])
 
         results[best_prediction, :] = -1
-        results_weights[best_prediction, :] = float_negative_inf
+        results_weights[best_prediction] = best_value
+
         for i in range(num_partons[best_prediction]):
             results[best_prediction, i] = best_jets[i]
-            results_weights[best_prediction, i] = best_value
 
         predictions[best_prediction][:] = float_negative_inf
         for i in range(num_targets):
@@ -211,14 +211,14 @@ def extract_prediction(predictions, num_partons, max_jets):
 @njit(numba.types.Tuple((TIResults, TFResults))(TPredictions, TInt64[::1], TInt64, TInt64), parallel=True)
 def _extract_predictions(predictions, num_partons, max_jets, batch_size):
     output = np.zeros((batch_size, len(predictions), num_partons.max()), np.int64)
-    weight = np.zeros((batch_size, len(predictions), num_partons.max()), np.float32)
+    weight = np.zeros((batch_size, len(predictions)), np.float32)
     predictions = [p.copy() for p in predictions]
 
     for batch in numba.prange(batch_size):
         current_prediction = numba.typed.List([prediction[batch] for prediction in predictions])
-        output[batch, :, :], weight[batch, :, :] = extract_prediction(current_prediction, num_partons, max_jets)
+        output[batch, :, :], weight[batch, :] = extract_prediction(current_prediction, num_partons, max_jets)
 
-    return np.ascontiguousarray(output.transpose((1, 0, 2))), np.ascontiguousarray(weight.transpose((1, 0, 2)))
+    return np.ascontiguousarray(output.transpose((1, 0, 2))), np.ascontiguousarray(weight.transpose((1, 0)))
 
 
 def extract_predictions(predictions: List[TArray]):
@@ -229,7 +229,7 @@ def extract_predictions(predictions: List[TArray]):
 
     max_partons = np.max(num_partons)
     results = np.zeros((len(predictions), len(predictions[0]), 3, max_jets*2))
-    weights = np.zeros((len(predictions), len(predictions[0]), 3, max_jets*2))
+    weights = np.zeros((len(predictions), len(predictions[0]), max_jets*2))
     original_weights = np.zeros(len(predictions[0]))
     for i in range(max_jets):
         for j in range(len(predictions)):
@@ -244,17 +244,17 @@ def extract_predictions(predictions: List[TArray]):
             temp_predictions_list = numba.typed.List([p.reshape((p.shape[0], -1)) for p in temp_predictions])
             result, weight = _extract_predictions(temp_predictions_list, num_partons, max_jets, batch_size)
             for l in range(len(weight[0])):
-                temp_weight = weight[:, l, :]
+                temp_weight = weight[:, l]
                 temp_weight[temp_weight == 999.] = original_weights[l]
-                weight[:, l, :] = temp_weight
+                weight[:, l] = temp_weight
             results[:,:,:,i+i*j] = result
-            weights[:,:,:,i+i*j] = weight
+            weights[:,:,i+i*j] = weight
     
     max_results = np.zeros_like(result)
     for i in range(results.shape[1]):
-        temp_weight = weights[:,i,:,:]
+        temp_weight = weights[:,i,:]
         print('temp_weight',temp_weight)
-        new_prod = np.prod(np.exp(temp_weight), axis=(0,1))
+        new_prod = np.prod(np.exp(temp_weight), axis=0)
         print('new_prod',new_prod)
         indx = np.argmax(new_prod)
         max_results[:,i,:] = results[:,i,:,indx]
