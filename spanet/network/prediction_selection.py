@@ -243,14 +243,14 @@ def extract_predictions(predictions: List[TArray]):
             temp_predictions[j,:,:,:,i] = parton_slice
             temp_predictions_list = numba.typed.List([p.reshape((p.shape[0], -1)) for p in temp_predictions])
             result, weight = _extract_predictions(temp_predictions_list, num_partons, max_jets, batch_size)
-            print('weight1', weight)
             for l in range(len(weight[0])):
                 temp_weight = weight[:, l, :]
                 temp_weight[temp_weight == 999.] = original_weights[l]
                 weight[:, l, :] = temp_weight
-            print('result', result, 'weight2', weight)
             results[:,:,:,i+i*j] = result
             weights[:,:,:,i+i*j] = weight
+            print('i',i,'j',j,'results',results[:,0,:,i+i*j])
+            print('i',i,'j',j,'weights',weights[:,0,:,i+i*j])
     
     max_results = np.zeros_like(result)
     for i in range(results.shape[1]):
