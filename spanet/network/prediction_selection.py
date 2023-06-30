@@ -233,7 +233,7 @@ def extract_predictions(predictions: List[TArray]):
     original_weights = np.zeros(len(predictions[0]))
     for i in range(max_jets):
         temp_predictions = np.array(predictions).copy()
-        for j in range(parton_slice.shape[0]):
+        for j in range(temp_predictions.shape[0]):
             parton_slice = temp_predictions[j,:,:,:,i]
             for k in range(parton_slice.shape[1]):
                 max_indices = np.argmax(parton_slice[k])
