@@ -229,7 +229,7 @@ def extract_predictions(predictions: List[TArray]):
 
     max_partons = np.max(num_partons)
     results = np.zeros((len(predictions), len(predictions[0]), 3, max_jets*2))
-    weights = np.zeros((len(predictions), len(predictions[0]), max_jets*2))
+    weights = np.ones((len(predictions), len(predictions[0]), max_jets*2)) - np.float32(np.inf)
     original_weights = np.zeros(len(predictions[0]))
     for i in range(max_jets):
         for j in range(len(predictions)):
@@ -253,9 +253,7 @@ def extract_predictions(predictions: List[TArray]):
     max_results = np.zeros_like(result)
     for i in range(results.shape[1]):
         temp_weight = weights[:,i,:]
-        print('temp_weight',temp_weight)
         new_prod = np.prod(np.exp(temp_weight), axis=0)
-        print('new_prod',new_prod)
         indx = np.argmax(new_prod)
         max_results[:,i,:] = results[:,i,:,indx]
             
