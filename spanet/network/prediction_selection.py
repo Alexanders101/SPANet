@@ -232,7 +232,7 @@ def extract_predictions(predictions: List[TArray]):
     weights = np.zeros((len(predictions), len(predictions[0]), 3, max_jets*2))
     original_weights = np.zeros(len(predictions[0]))
     for i in range(max_jets):
-        for j in range(temp_predictions.shape[0]):
+        for j in range(len(predictions):
             temp_predictions = np.array(predictions).copy()
             parton_slice = temp_predictions[j,:,:,:,i]
             for k in range(parton_slice.shape[1]):
