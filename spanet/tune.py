@@ -1,3 +1,7 @@
+# Currently in beta stage, not fully tested.
+# Requires
+# pip install "ray[tune]==2.5.1" hyperopt
+
 import os
 import math
 
@@ -68,7 +72,14 @@ def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, g
     trainer.fit(model)
 
 
-def tune_spanet(base_options_file: str, num_trials=10, num_epochs=10, gpus_per_trial=0):
+def tune_spanet(
+    base_options_file: str, 
+    num_trials: int = 10, 
+    num_epochs: int = 10, 
+    gpus_per_trial: int = 0,
+    name: str = "spanet_asha_tune",
+    log_dir: str = "spanet_output"
+):
     config = {
         "hidden_dim": tune.choice([32, 64, 96, 128]),
 
@@ -117,7 +128,8 @@ def tune_spanet(base_options_file: str, num_trials=10, num_epochs=10, gpus_per_t
             num_samples=num_trials,
         ),
         run_config=air.RunConfig(
-            name="tune_mnist_asha",
+            name=name,
+            storage_path=log_dir,
             progress_reporter=reporter,
         ),
         param_space=config,
@@ -136,7 +148,7 @@ if __name__ == '__main__':
 
     parser.add_argument(
         "-g", "--gpus_per_trial", type=int, default=0,
-        help="Number of GPUs for parallel trials."
+        help="Number of GPUs available for each parallel trial."
     )
 
     parser.add_argument(
@@ -145,9 +157,17 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "-n", "--num_trials", type=int, default=10,
+        "-t", "--num_trials", type=int, default=10,
         help="Number of trials to run."
     )
+
+    parser.add_argument(
+        "-l", "--log_dir", type=str, default="spanet_output",
+        help="Output directory for all trials.")
+
+    parser.add_argument(
+        "-n", "--name", type=str, default="spanet_asha_tune",
+        help="The sub-directory to create for this run.")
 
     tune_spanet(**parser.parse_args().__dict__)
 
