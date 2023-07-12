@@ -1,4 +1,5 @@
 from typing import Dict, Callable
+import warnings
 
 import numpy as np
 import torch
@@ -62,13 +63,16 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         particle_accuracies = particle_accuracies.max(0)
 
         # Create the logging dictionaries
-        metrics = {f"jet/accuracy_{i}_of_{j}": (jet_accuracies[num_particles == j] >= i).mean()
-                   for j in range(1, num_targets + 1)
-                   for i in range(1, j + 1)}
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+    
+            metrics = {f"jet/accuracy_{i}_of_{j}": (jet_accuracies[num_particles == j] >= i).mean()
+                    for j in range(1, num_targets + 1)
+                    for i in range(1, j + 1)}
 
-        metrics.update({f"particle/accuracy_{i}_of_{j}": (particle_accuracies[num_particles == j] >= i).mean()
-                        for j in range(1, num_targets + 1)
-                        for i in range(1, j + 1)})
+            metrics.update({f"particle/accuracy_{i}_of_{j}": (particle_accuracies[num_particles == j] >= i).mean()
+                            for j in range(1, num_targets + 1)
+                            for i in range(1, j + 1)})
 
         particle_scores = particle_scores.ravel()
         particle_targets = permuted_masks.ravel()
