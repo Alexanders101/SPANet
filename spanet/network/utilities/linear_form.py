@@ -67,7 +67,7 @@ def symmetric_tensor(weights: Tensor, permutation_group: List[List[int]]):
 def create_symmetric_function(permutation_group: List[List[int]]):
     code = [
         "def symmetrize_tensor(weights):",
-        "    symmetric_weights = weights"
+        "    symmetric_weights = weights",
         "    "
     ]
 
