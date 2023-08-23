@@ -70,13 +70,14 @@ def main(log_directory: str,
          event_file: Optional[str],
          batch_size: Optional[int],
          output_vectors: bool,
-         gpu: bool):
-    model = load_model(log_directory, test_file, event_file, batch_size, gpu)
+         gpu: bool,
+         fp16: bool):
+    model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16)
 
     if output_vectors:
-        evaluation, full_outputs = evaluate_on_test_dataset(model, return_full_output=True)
+        evaluation, full_outputs = evaluate_on_test_dataset(model, return_full_output=True, fp16=fp16)
     else:
-        evaluation = evaluate_on_test_dataset(model, return_full_output=False)
+        evaluation = evaluate_on_test_dataset(model, return_full_output=False, fp16=fp16)
         full_outputs = None
 
     create_hdf5_output(output_file, model.testing_dataset, evaluation, full_outputs)
@@ -102,6 +103,9 @@ if __name__ == '__main__':
 
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="Evaluate network on the gpu.")
+    
+    parser.add_argument("-fp16", "--fp16", action="store_true",
+                        help="Use Automatic Mixed Precision for inference.")
 
     parser.add_argument("-v", "--output_vectors", action="store_true",
                         help="Include embedding vectors in output in an additional section of the HDF5.")

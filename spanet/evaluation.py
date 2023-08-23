@@ -41,6 +41,7 @@ def load_model(
     event_info_file: Optional[str] = None,
     batch_size: Optional[int] = None,
     cuda: bool = False,
+    fp16: bool = False,
     checkpoint: Optional[str] = None
 ) -> JetReconstructionModel:
     # Load the best-performing checkpoint on validation data
@@ -50,6 +51,8 @@ def load_model(
 
     checkpoint = torch.load(checkpoint, map_location='cpu')
     checkpoint = checkpoint["state_dict"]
+    if fp16:
+        checkpoint = tree_map(lambda x: x.half(), checkpoint)
 
     # Load the options that were used for this run and set the testing-dataset value
     options = Options.load(f"{log_directory}/options.json")
@@ -80,7 +83,8 @@ def load_model(
 def evaluate_on_test_dataset(
         model: JetReconstructionModel,
         progress=progress,
-        return_full_output: bool = False
+        return_full_output: bool = False,
+        fp16: bool = False
 ) -> Union[Evaluation, Tuple[Evaluation, Outputs]]:
     full_assignments = defaultdict(list)
     full_assignment_probabilities = defaultdict(list)
@@ -97,7 +101,9 @@ def evaluate_on_test_dataset(
 
     for batch in dataloader:
         sources = tuple(Source(x[0].to(model.device), x[1].to(model.device)) for x in batch.sources)
-        outputs = model.forward(sources)
+
+        with torch.cuda.amp.autocast(enabled=fp16):
+            outputs = model.forward(sources)
 
         assignment_indices = extract_predictions([
             np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)

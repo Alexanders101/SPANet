@@ -74,7 +74,7 @@ class StackedEncoder(nn.Module):
         combined_sequence_mask = torch.cat((particle_sequence_mask, sequence_mask), dim=0)
 
         # -----------------------------------------------------------------------------
-        # Run all of the vectors through transformer encoderx
+        # Run all of the vectors through transformer encoder
         # combined_vectors: [T + 1, B, D]
         # particle_vector: [B, D]
         # encoded_vectors: [T, B, D]
