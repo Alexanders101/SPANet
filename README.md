@@ -40,14 +40,14 @@ These are only the minimum versions that we tested, other versions might work.
 | Library                                                 | Minimum Version |
 | ------------------------------------------------------- |-----------------|
 | python                                                  | 3.9             |
-| [numpy](https://pypi.org/project/numpy/)                | 1.22.1          |
+| [numpy](https://pypi.org/project/numpy/)                | 1.24            |
 | [sympy](https://www.sympy.org/en/index.html)            | 1.11            |
 | [scikit_learn](https://scikit-learn.org/stable/)        | 1.1             |
-| [pytorch](https://pytorch.org/)                         | 1.12            |
-| [pytorch-lightning](https://www.pytorchlightning.ai/)   | 1.7             |
+| [pytorch](https://pytorch.org/)                         | 2.0             |
+| [pytorch-lightning](https://www.pytorchlightning.ai/)   | 2.0             |
 | [opt_einsum](https://github.com/dgasmith/opt_einsum)    | 3.3.0           |
 | [h5py](https://pypi.org/project/h5py/)                  | 2.10            |
-| [numba](https://numba.pydata.org/)                      | 0.53.1          |
+| [numba](https://numba.pydata.org/)                      | 0.56            |
 
 We have updated to using an anaconda environment for simpler dependency management.
 You can create the environment locally with the following conda / mamba commands:
