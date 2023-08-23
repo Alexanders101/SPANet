@@ -39,7 +39,7 @@ a complete training run takes roughly 4 hours on a single GPU.
 ```bash
 # Example Dataset
 # ---------------
-python -m spanet.train -of options_files/full_hadronic_ttbar/example.json --gpus NUM_GPU
+python -m spanet.train -of options_files/full_hadronic_ttbar/example.json --time_limit 00:00:01:00 --gpus NUM_GPU
 
 # Full Dataset
 # ------------
