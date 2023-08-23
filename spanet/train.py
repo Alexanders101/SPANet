@@ -6,10 +6,11 @@ import json
 
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.profiler import PyTorchProfiler
+from pytorch_lightning.profilers import PyTorchProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.strategies import DDPStrategy, DDPFullyShardedStrategy
-from pytorch_lightning.utilities.imports import _RICH_AVAILABLE
+from pytorch_lightning.callbacks.progress.rich_progress import _RICH_AVAILABLE
+from pytorch_lightning.loggers.wandb import _WANDB_AVAILABLE, WandbLogger
+
 from pytorch_lightning.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
@@ -36,19 +37,18 @@ def main(
         name: str,
 
         torch_script: bool,
-        fairscale: bool,
         fp16: bool,
-        graph: bool,
         verbose: bool,
         full_events: bool,
 
         profile: bool,
         gpus: Optional[int],
         epochs: Optional[int],
+        time_limit: Optional[str],
         batch_size: Optional[int],
         limit_dataset: Optional[float],
         random_seed: int,
-):
+    ):
 
     # Whether or not this script version is the master run or a worker
     master = True
@@ -116,6 +116,7 @@ def main(
     if state_dict is not None:
         if master:
             print(f"Loading state dict from: {state_dict}")
+
         state_dict = torch.load(state_dict, map_location="cpu")["state_dict"]
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
 
@@ -128,25 +129,13 @@ def main(
                 if pname in state_dict:
                     parameter.requires_grad_(False)
 
-    # if torch_script:
-    #     model = torch.jit.script(model)
-
-    # If we are using more than one gpu, then switch to DDP training
-    # distributed_backend = 'dp' if options.num_gpu > 1 else None
-    distributed_backend = None
-    if options.num_gpu > 1:
-        if fairscale:
-            distributed_backend = DDPFullyShardedStrategy(
-                reshard_after_forward=False
-            )
-        else:
-            distributed_backend = DDPStrategy(
-                find_unused_parameters=False
-            )
-
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
     log_dir = getcwd() if log_dir is None else log_dir
-    logger = TensorBoardLogger(save_dir=log_dir, name=name, log_graph=graph)
+    logger = (
+        WandbLogger(name=name, save_dir=log_dir)
+        if _WANDB_AVAILABLE else
+        TensorBoardLogger(save_dir=log_dir, name=name)
+    )
 
     # Create the checkpoint for this training run. We will save the best validation networks based on 'accuracy'
     callbacks = [
@@ -170,17 +159,20 @@ def main(
         profiler = PyTorchProfiler(emit_nvtx=True)
 
     # Create the final pytorch-lightning manager
-    trainer = pl.Trainer(logger=logger,
-                         max_epochs=epochs,
-                         callbacks=callbacks,
-                         resume_from_checkpoint=checkpoint,
-                         strategy=distributed_backend,
-                         accelerator="gpu" if options.num_gpu > 0 else None,
-                         devices=options.num_gpu if options.num_gpu > 0 else None,
-                         track_grad_norm=2 if options.verbose_output else -1,
-                         gradient_clip_val=options.gradient_clip if options.gradient_clip > 0 else None,
-                         precision=16 if fp16 else 32,
-                         profiler=profiler)
+    trainer = pl.Trainer(
+        accelerator="gpu" if options.num_gpu > 0 else "auto",
+        devices=options.num_gpu if options.num_gpu > 0 else "auto",
+        strategy="ddp" if options.num_gpu > 1 else "auto",
+        precision="16-mixed" if fp16 else "32-true",
+
+        gradient_clip_val=options.gradient_clip if options.gradient_clip > 0 else None,
+        max_epochs=epochs,
+        max_time=time_limit,
+
+        logger=logger,
+        profiler=profiler,
+        callbacks=callbacks
+    )
 
     # Save the current hyperparameters to a json file in the checkpoint directory
     if master:
@@ -192,7 +184,7 @@ def main(
 
         shutil.copy2(options.event_info_file, f"{trainer.logger.log_dir}/event.yaml")
 
-    trainer.fit(model)
+    trainer.fit(model, ckpt_path=checkpoint)
     # -------------------------------------------------------------------------------------------------------
 
 
@@ -212,32 +204,32 @@ if __name__ == '__main__':
                         help="JSON file with option overloads.")
 
     parser.add_argument("-cf", "--checkpoint", type=str, default=None,
-                        help="Optional checkpoint to load from")
+                        help="Optional checkpoint to load the training state from. "
+                             "Fully restores model weights and optimizer state.")
 
     parser.add_argument("-sf", "--state_dict", type=str, default=None,
-                        help="Load from checkpoint but only the model weights.")
+                        help="Load from checkpoint but only the model weights. "
+                             "Can be partial as the weights don't have to match one-to-one.")
 
     parser.add_argument("-fsf", "--freeze_state_dict", action='store_true',
-                        help="Freeze any weights that were loaded from the state dict.")
+                        help="Freeze any weights that were loaded from the state dict. "
+                             "Used for finetuning new layers.")
 
     parser.add_argument("-l", "--log_dir", type=str, default=None,
                         help="Output directory for the checkpoints and tensorboard logs. Default to current directory.")
 
     parser.add_argument("-n", "--name", type=str, default="spanet_output",
-                        help="The sub-directory to create for this run.")
+                        help="The sub-directory to create for this run and an identifier for WANDB.")
 
-    parser.add_argument("-fp16", action="store_true",
-                        help="Use AMP for training.")
+    parser.add_argument("-e", "--epochs", type=int, default=None,
+                        help="Override number of epochs to train for")
+    
+    parser.add_argument("-t", "--time_limit", type=str, default=None,
+                        help="Time limit for training, in the format DD:HH:MM:SS.")
 
-    parser.add_argument("--fairscale", action="store_true",
-                        help="Use Fairscale Sharded Training.")
-
-    parser.add_argument("-g", "--graph", action="store_true",
-                        help="Log the computation graph.")
-
-    parser.add_argument("-v", "--verbose", action='store_true',
-                        help="Output additional information to console and log.")
-
+    parser.add_argument("-g", "--gpus", type=int, default=None,
+                        help="Override GPU count in hyperparameters.")
+    
     parser.add_argument("-b", "--batch_size", type=int, default=None,
                         help="Override batch size in hyperparameters.")
 
@@ -247,6 +239,12 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--limit_dataset", type=float, default=None,
                         help="Limit dataset to only the first L percent of the data (0 - 100).")
 
+    parser.add_argument("-fp16", "--fp16", action="store_true",
+                        help="Use Torch AMP for training.")
+
+    parser.add_argument("-v", "--verbose", action='store_true',
+                        help="Output additional information to console and log.")
+
     parser.add_argument("-r", "--random_seed", type=int, default=0,
                         help="Set random seed for cross-validation.")
 
@@ -254,12 +252,6 @@ if __name__ == '__main__':
                         help="Compile the neural network using torchscript.")
 
     parser.add_argument("--profile", action='store_true',
-                        help="Profile network for a single training run.")
-
-    parser.add_argument("--epochs", type=int, default=None,
-                        help="Override number of epochs to train for")
-
-    parser.add_argument("--gpus", type=int, default=None,
-                        help="Override GPU count in hyperparameters.")
+                        help="Profile network for a single training epoch.")
 
     main(**parser.parse_args().__dict__)

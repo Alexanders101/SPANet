@@ -41,8 +41,8 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         # Compute all possible target permutations and take the best performing permutation
         # First compute raw_old accuracy so that we can get an accuracy score for each event
         # This will also act as the method for choosing the best permutation to compare for the other metrics.
-        jet_accuracies = np.zeros((num_permutations, num_targets, batch_size), dtype=np.bool)
-        particle_accuracies = np.zeros((num_permutations, num_targets, batch_size), dtype=np.bool)
+        jet_accuracies = np.zeros((num_permutations, num_targets, batch_size), dtype=bool)
+        particle_accuracies = np.zeros((num_permutations, num_targets, batch_size), dtype=bool)
         for i, permutation in enumerate(event_permutation_group):
             for j, (prediction, target) in enumerate(zip(jet_predictions, stacked_targets[permutation])):
                 jet_accuracies[i, j] = np.all(prediction == target, axis=1)
@@ -100,7 +100,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         # Stack all of the targets into single array, we will also move to numpy for easier the numba computations.
         stacked_targets = np.zeros(num_targets, dtype=object)
-        stacked_masks = np.zeros((num_targets, batch_size), dtype=np.bool)
+        stacked_masks = np.zeros((num_targets, batch_size), dtype=bool)
         for i, (target, mask) in enumerate(targets):
             stacked_targets[i] = target.detach().cpu().numpy()
             stacked_masks[i] = mask.detach().cpu().numpy()
@@ -150,14 +150,6 @@ class JetReconstructionValidation(JetReconstructionNetwork):
                 self.log(name, value, sync_dist=True)
 
         return metrics
-
-    def validation_epoch_end(self, outputs):
-        # Optionally use this accuracy score for something like hyperparameter search
-        # validation_accuracy = sum(x['validation_accuracy'] for x in outputs) / len(outputs)
-
-        if self.options.verbose_output:
-            for name, parameter in self.named_parameters():
-                self.logger.experiment.add_histogram(name, parameter)
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)

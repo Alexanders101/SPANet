@@ -13,7 +13,7 @@ from spanet.network.utilities.divergence_losses import assignment_cross_entropy_
 
 
 def numpy_tensor_array(tensor_list):
-    output = np.empty(len(tensor_list), dtype=np.object)
+    output = np.empty(len(tensor_list), dtype=object)
     output[:] = tensor_list
 
     return output

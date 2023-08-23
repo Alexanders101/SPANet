@@ -81,7 +81,7 @@ class SymmetricEvaluator:
             cluster_predictions = np.stack([predictions[i] for i in cluster_indices])
 
             # Keep track of the best accuracy achieved for each event
-            best_accuracy = np.zeros(cluster_target_masks.shape[1], dtype=np.int)
+            best_accuracy = np.zeros(cluster_target_masks.shape[1], dtype=np.int64)
 
             for target_permutation in permutations(range(len(cluster_indices))):
                 target_permutation = list(target_permutation)
@@ -107,7 +107,7 @@ class SymmetricEvaluator:
         target_masks = np.stack(target_masks)
 
         # Keep track of the best accuracy achieved for each event
-        best_accuracy = np.zeros(target_masks.shape[1], dtype=np.int)
+        best_accuracy = np.zeros(target_masks.shape[1], dtype=np.int64)
 
         for target_permutation in self.event_info.event_permutation_group:
             permuted_targets = self.permute_arrays(target_jets, target_permutation)
