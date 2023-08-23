@@ -52,7 +52,7 @@ These are only the minimum versions that we tested, other versions might work.
 We have updated to using an anaconda environment for simpler dependency management.
 You can create the environment locally with the following conda / mamba commands:
 ```bash
-conda env create -p ./environment --file environment.yaml
+conda env create -p ./environment --file environment_cuda118.yaml
 conda activate ./environment
 ```
 
