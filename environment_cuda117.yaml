@@ -11,6 +11,7 @@ dependencies:
   - conda
   - pip
   - cuda-toolkit
+  - onnx
 
   - numpy=1.24
   - sympy

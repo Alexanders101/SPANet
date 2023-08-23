@@ -123,8 +123,13 @@ def main(
         input_log_transform: bool,
         output_log_transform: bool,
         output_embeddings: bool,
-        gpu: bool
+        gpu: bool,
+        opset: int
 ):
+    major_version, minor_version, *_ = torch.__version__.split(".")
+    if int(major_version) == 2 and int(minor_version) == 0:
+        raise RuntimeError("ONNX export with Torch 2.0.x is not working. Either install 2.1 or 1.13.")
+
     model = load_model(log_directory, cuda=gpu)
 
     # Create wrapped model with flat inputs and outputs
@@ -147,13 +152,14 @@ def main(
     if not input_log_transform:
         print("WARNING -- No input log transform! User must apply log transform manually. -- WARNING")
     print("-" * 60)
+    
     wrapped_model.to_onnx(
         output_file,
         sources,
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13
+        opset_version=opset
     )
 
 
@@ -168,6 +174,9 @@ if __name__ == '__main__':
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="Trace the network on a gpu.")
 
+    parser.add_argument("--opset", type=int, default=15,
+                        help="ONNX opset version to use. Needs to be >= 14 for SPANet")
+    
     parser.add_argument("--input-log-transform", action="store_true",
                         help="Exported model will apply log transformations to input features automatically.")
 
