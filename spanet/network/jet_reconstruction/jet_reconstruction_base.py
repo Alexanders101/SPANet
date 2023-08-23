@@ -70,7 +70,6 @@ class JetReconstructionBase(pl.LightningModule):
             "batch_size": self.options.batch_size,
             "pin_memory": self.options.num_gpu > 0,
             "num_workers": self.options.num_dataloader_workers,
-            "prefetch_factor": 2
         }
 
     @property
