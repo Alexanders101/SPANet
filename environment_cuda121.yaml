@@ -2,7 +2,7 @@ name: spanet
 
 channels:
   - pytorch-nightly
-  - nvidia/label/cuda-11.8.0
+  - nvidia/label/cuda-12.1.0
   - conda-forge
   - nodefaults
 
@@ -22,7 +22,7 @@ dependencies:
 
   - pytorch=2.1
   - pytorch-lightning=2.0.7
-  - pytorch-cuda=11.8
+  - pytorch-cuda=12.1
   - torchvision
   - torchaudio
 
