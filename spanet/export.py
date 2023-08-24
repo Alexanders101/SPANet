@@ -123,10 +123,11 @@ def main(
         input_log_transform: bool,
         output_log_transform: bool,
         output_embeddings: bool,
-        gpu: bool
+        gpu: bool,
+        opset_version: int
 ):
     model = load_model(log_directory, cuda=gpu)
-
+    
     # Create wrapped model with flat inputs and outputs
     wrapped_model = WrappedModel(model, input_log_transform, output_log_transform, output_embeddings)
     wrapped_model.to(model.device)
@@ -153,7 +154,7 @@ def main(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13
+        opset_version=opset_version
     )
 
 
@@ -177,5 +178,7 @@ if __name__ == '__main__':
     parser.add_argument("--output-embeddings", action="store_true",
                         help="Exported model will also output the embeddings for every part of the event.")
 
+    parser.add_argument("--opset-version", type=int, default=13, help="Opset version to use in export.")
+    
     arguments = parser.parse_args()
     main(**arguments.__dict__)

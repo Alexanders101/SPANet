@@ -116,7 +116,7 @@ class JetReconstructionDataset(Dataset):
             self.num_events = limit_index.shape[0]
             self.num_vectors = sum(source.num_vectors() for source in self.sources.values())
 
-            print(f"Index Range: {limit_index[0]}...{limit_index[-1]}")
+            #print(f"Index Range: {limit_index[0]}...{limit_index[-1]}")
 
         # Optionally remove any events where any of the targets are missing.
         if not partial_events:

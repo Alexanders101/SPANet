@@ -32,3 +32,6 @@ dependencies:
   - jupyterlab
   - seaborn
   - rich
+
+  - matplotlib
+  - scipy

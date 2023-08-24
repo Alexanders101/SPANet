@@ -11,6 +11,10 @@ from spanet.dataset.evaluator import SymmetricEvaluator, EventInfo
 from spanet.evaluation import evaluate_on_test_dataset, load_model
 from spanet.dataset.types import Evaluation
 
+import matplotlib.pyplot as plt
+import math
+import os
+from scipy.stats import wasserstein_distance
 
 def formatter(value: Any) -> str:
     """ A monolithic formatter function to convert possible values to output strings.
@@ -220,7 +224,68 @@ def evaluate_predictions(predictions: ArrayLike, num_vectors: ArrayLike, targets
 
     return results, jet_limits, evaluator.clusters
 
+def plot_regression_performance(key, predictions, targets, outdir):
 
+    if not os.path.isdir(outdir): os.mkdir(outdir)
+    
+    key_filename = key.replace("/", "_")
+
+    nbins = 50
+
+    # Comparison of target and prediction
+    plt.subplots(2,1, height_ratios=[3,1])
+
+    plt.subplot(2,1,1)
+    pred_hist, bins, _ = plt.hist(predictions, nbins, density=1, alpha=0.5, label="{} Predicted".format(key))
+    targ_hist, _, _ = plt.hist(targets, bins=bins, density=1, alpha=0.5, label="{} Target".format(key))
+    plt.legend()
+    plt.ylabel("A.U.")
+
+    EMD=wasserstein_distance(pred_hist, targ_hist)
+    plt.text(0.02, 1.02, "EMD = {}".format(EMD), transform=plt.gca().transAxes)
+
+    # Ratio pad
+    plt.subplot(2,1,2)
+    ratio = [p/t if not t==0 else 0 for p,t in zip(pred_hist, targ_hist)]
+    #ratio = [i if not (math.isinf(i) or math.isnan(i)) else 0.0 for i in ratio]
+    bincenter = 0.5 * (bins[1:] + bins[:-1])
+    
+    plt.plot(bincenter, ratio)
+    plt.ylim([0.5, 2.0])
+    line = np.full(nbins, 1.0)
+    plt.plot(bincenter, line, color="black", linestyle="dashed" )
+    plt.ylabel("Pred/Target")    
+    plt.xlabel(key)
+
+    
+    plt.savefig("{}/{}.png".format(outdir, key_filename))
+    print("Regression plot for {} saved in {}, EMD = {}".format(key, outdir, EMD))
+    plt.close()
+
+    # Delta plot
+    delta = predictions - targets
+    plt.hist(delta, nbins, density=1, alpha=0.5, label="{} Delta (Pred - Target)".format(key))
+    plt.legend()
+    plt.ylabel("A.U.")
+    plt.xlabel("$\Delta$ ({})".format(key))
+
+    plt.savefig("{}/{}_delta.png".format(outdir, key_filename))
+    plt.close()
+
+    # Percent err plot
+    percent_err = [d/t if not t==0 else 0 for d,t in zip(delta,targets)]
+    #percent_err = [i for i in percent_err if not (math.isinf(i) or math.isnan(i))]
+    
+    plt.hist(percent_err, nbins, density=1, alpha=0.5, label="{} % Error".format(key))
+    plt.legend()
+    plt.ylabel("A.U.")
+    plt.xlabel("% Error ({})".format(key))
+
+    plt.savefig("{}/{}_percent_err.png".format(outdir, key_filename))
+    plt.close()    
+    
+    return()
+    
 def main(
     log_directory: str,
     test_file: Optional[str],
@@ -228,11 +293,30 @@ def main(
     batch_size: Optional[int],
     lines: int,
     gpu: bool,
-    latex: bool
+    latex: bool,
+    outdir: str,
+    checkpoint: Optional[str],
 ):
-    model = load_model(log_directory, test_file, event_file, batch_size, gpu)
+
+    model = load_model(log_directory, test_file, event_file, batch_size, gpu, checkpoint)
+
     evaluation = evaluate_on_test_dataset(model)
 
+
+    # make some plots for regressions
+    regressions = list(evaluation.regressions.values())
+    keys = list(evaluation.regressions.keys())
+    
+    regression_targets = [reg.cpu().numpy() for reg in model.testing_dataset.regressions.values()]
+
+    if not outdir:
+          outdir = log_directory
+    
+    for key, pred, truth in zip(keys, regressions, regression_targets):
+        plot_regression_performance(key, pred, truth, outdir)
+    
+
+    
     # Flatten predictions
     predictions = list(evaluation.assignments.values())
 
@@ -246,6 +330,9 @@ def main(
     else:
         display_table(results, jet_limits, clusters)
 
+
+ 
+        
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -271,6 +358,12 @@ if __name__ == '__main__':
 
     parser.add_argument("-tex", "--latex", action="store_true",
                         help="Output a latex table.")
+
+    parser.add_argument("--outdir", type=str, default=None,
+                        help="Output directory for regression performance plots (default:log_directory)")
+
+    parser.add_argument("--checkpoint", "--chk", type=str, default=None,
+                        help="Select which checkpoint to load")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)
