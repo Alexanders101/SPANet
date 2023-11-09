@@ -1,8 +1,8 @@
 name: spanet
 
 channels:
-  - pytorch-nightly
-  - nvidia/label/cuda-12.1.0
+  - pytorch
+  - nvidia
   - conda-forge
   - nodefaults
 
@@ -10,7 +10,6 @@ dependencies:
   - python=3.10.*
   - conda
   - pip
-  - cuda-toolkit
   - onnx
 
   - numpy=1.24
