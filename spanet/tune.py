@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
     "l2_penalty": tune.loguniform(1e-6, 1e-2)
 }
 
-def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, gpus_per_trial: int = 0):
+def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, cpus_per_trial: int = 1, gpus_per_trial: int = 0):
     if not os.path.isabs(base_options_file):
         base_options_file = f"{home_dir}/{base_options_file}"
 
@@ -54,7 +54,7 @@ def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, g
 
     options.update_options(config)
     options.epochs = num_epochs
-    options.num_dataloader_workers = 0
+    options.num_dataloader_workers = cpus_per_trial
 
     if not os.path.isabs(options.event_info_file):
         options.event_info_file = f"{home_dir}/{options.event_info_file}"
@@ -99,6 +99,7 @@ def tune_spanet(
     search_space_file: Optional[str] = None,
     num_trials: int = 10, 
     num_epochs: int = 10, 
+    cpus_per_trial: int = 1,
     gpus_per_trial: int = 0,
     name: str = "spanet_asha_tune",
     log_dir: str = "spanet_output"
@@ -132,10 +133,11 @@ def tune_spanet(
         base_options_file=base_options_file,
         home_dir=os.getcwd(),
         num_epochs=num_epochs,
+        cpus_per_trial=cpus_per_trial
         gpus_per_trial=gpus_per_trial
     )
 
-    resources_per_trial = {"cpu": 1, "gpu": gpus_per_trial}
+    resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpus_per_trial}
 
     tuner = tune.Tuner(
         tune.with_resources(
@@ -171,6 +173,11 @@ if __name__ == '__main__':
     parser.add_argument(
         "-s", "--search_space_file", type=str, default=None,
         help="JSON file with tune search space definitions to override default."
+    )
+
+    parser.add_argument(
+        "-c", "--cpus_per_trial", type=int, default=1,
+        help="Number of CPUs available for each parallel trial."
     )
 
     parser.add_argument(
