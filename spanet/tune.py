@@ -133,7 +133,7 @@ def tune_spanet(
         base_options_file=base_options_file,
         home_dir=os.getcwd(),
         num_epochs=num_epochs,
-        cpus_per_trial=cpus_per_trial
+        cpus_per_trial=cpus_per_trial,
         gpus_per_trial=gpus_per_trial
     )
 
