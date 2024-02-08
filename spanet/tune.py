@@ -1,4 +1,4 @@
-# Currently in beta stage, not fully tested.
+ Currently in beta stage, not fully tested.
 # Requires
 # pip install "ray[tune]==2.5.1" hyperopt
 
@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
     "l2_penalty": tune.loguniform(1e-6, 1e-2)
 }
 
-def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, cpus_per_trial: int = 1, gpus_per_trial: int = 0, subprocess: bool = False):
+def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, cpus_per_trial: int = 1, gpus_per_trial: int = 0, subprocess_factor: int = 1):
     if not os.path.isabs(base_options_file):
         base_options_file = f"{home_dir}/{base_options_file}"
 
@@ -54,10 +54,7 @@ def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, c
 
     options.update_options(config)
     options.epochs = num_epochs
-    if subprocess:
-        options.num_dataloader_workers = cpus_per_trial
-    else:
-        options.num_dataloader_workers = 0 
+    options.num_dataloader_workers = cpus_per_trial * subprocess_factor
 
     if not os.path.isabs(options.event_info_file):
         options.event_info_file = f"{home_dir}/{options.event_info_file}"
@@ -106,7 +103,7 @@ def tune_spanet(
     gpus_per_trial: int = 0,
     name: str = "spanet_asha_tune",
     log_dir: str = "spanet_output",
-    subprocess: bool = False,
+    subprocess_factor: int = 1,
 ):
     # Load the search space. 
     # This seems to be the best way to load arbitrary tune search spaces.
@@ -129,7 +126,7 @@ def tune_spanet(
 
     reporter = CLIReporter(
         parameter_columns=list(config.keys()),
-        metric_columns=["loss", "mean_accuracy", "training_iteration"]
+        metric_columns=["val_loss", "mean_accuracy", "training_iteration"]
     )
 
     train_fn_with_parameters = tune.with_parameters(
@@ -139,7 +136,7 @@ def tune_spanet(
         num_epochs=num_epochs,
         cpus_per_trial=cpus_per_trial,
         gpus_per_trial=gpus_per_trial,
-        subprocess=subprocess
+        subprocess_factor = subprocess_factor
     )
 
     resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpus_per_trial}
@@ -150,8 +147,8 @@ def tune_spanet(
             resources=resources_per_trial
         ),
         tune_config=tune.TuneConfig(
-            metric="loss",
-            mode="min",
+            metric="mean_accuracy",
+            mode="max",
             scheduler=scheduler,
             search_alg=HyperOptSearch(),
             num_samples=num_trials,
@@ -191,6 +188,11 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
+        "-sf", "--subprocess_factor", type=int, default=1,
+        help="The number of subprocesses per trial is the number of cpu per trial multiplied by this factor."
+    )
+
+    parser.add_argument(
         "-e", "--num_epochs", type=int, default=128,
         help="Number of training epochs per trial"
     )
@@ -207,11 +209,6 @@ if __name__ == '__main__':
     parser.add_argument(
         "-n", "--name", type=str, default="spanet_asha_tune",
         help="The sub-directory to create for this run.")
-
-    parser.add_argument(
-        "-sub", "--subprocess", type=bool, default="False",
-        help="Set this flag to true if you want to enable subprocess in Dataloader"
-    )
 
     tune_spanet(**parser.parse_args().__dict__)
 
