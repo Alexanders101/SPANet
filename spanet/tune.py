@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
     "l2_penalty": tune.loguniform(1e-6, 1e-2)
 }
 
-def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, cpus_per_trial: int = 1, gpus_per_trial: int = 0, subprocess_factor: int = 1):
+def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, cpus_per_trial: int = 1, gpus_per_trial: int = 0, subprocess_factor: int = 0):
     if not os.path.isabs(base_options_file):
         base_options_file = f"{home_dir}/{base_options_file}"
 
@@ -103,7 +103,7 @@ def tune_spanet(
     gpus_per_trial: int = 0,
     name: str = "spanet_asha_tune",
     log_dir: str = "spanet_output",
-    subprocess_factor: int = 1,
+    subprocess_factor: int = 0,
 ):
     # Load the search space. 
     # This seems to be the best way to load arbitrary tune search spaces.
@@ -136,7 +136,7 @@ def tune_spanet(
         num_epochs=num_epochs,
         cpus_per_trial=cpus_per_trial,
         gpus_per_trial=gpus_per_trial,
-        subprocess_factor = subprocess_factor
+        subprocess_factor=subprocess_factor
     )
 
     resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpus_per_trial}
@@ -188,7 +188,7 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "-sf", "--subprocess_factor", type=int, default=1,
+        "-sf", "--subprocess_factor", type=int, default=0,
         help="The number of subprocesses per trial is the number of cpu per trial multiplied by this factor."
     )
 
