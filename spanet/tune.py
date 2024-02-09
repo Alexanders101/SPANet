@@ -20,6 +20,14 @@ try:
     from ray.tune.schedulers import ASHAScheduler
     from ray.tune.search.hyperopt import HyperOptSearch
     from ray.tune.integration.pytorch_lightning import TuneReportCallback
+    from ray.train import RunConfig, ScalingConfig, CheckpointConfig
+    from ray.train.lightning import (
+            RayDDPStrategy,
+            RayLightningEnvironment,
+            RayTrainReportCallback,
+            prepare_trainer
+    )
+    from ray.train.torch import TorchTrainer
 
 except ImportError:
     print("Tuning script requires additional dependencies. Please run: pip install \"ray[tune]\" hyperopt")
@@ -41,7 +49,8 @@ DEFAULT_CONFIG = {
     "l2_penalty": tune.loguniform(1e-6, 1e-2)
 }
 
-def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, cpus_per_trial: int = 1, gpus_per_trial: int = 0, subprocess_factor: int = 0):
+
+def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10):
     if not os.path.isabs(base_options_file):
         base_options_file = f"{home_dir}/{base_options_file}"
 
@@ -54,7 +63,7 @@ def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, c
 
     options.update_options(config)
     options.epochs = num_epochs
-    options.num_dataloader_workers = cpus_per_trial * subprocess_factor
+    options.num_dataloader_workers = 0
 
     if not os.path.isabs(options.event_info_file):
         options.event_info_file = f"{home_dir}/{options.event_info_file}"
@@ -75,13 +84,14 @@ def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, c
     # Typically, we only use 1 gpu per trial so don't need any of the DDP stuff.
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        accelerator="gpu" if gpus_per_trial > 0 else None,
-        devices=gpus_per_trial if gpus_per_trial > 0 else None,
+        accelerator="auto",
+        devices="auto",
         gradient_clip_val=options.gradient_clip if options.gradient_clip > 0 else None,
         enable_progress_bar=False,
         logger=TensorBoardLogger(
             save_dir=os.getcwd(), name="", version="."
         ),
+        strategy=RayDDPStrategy(),
         callbacks=[
             TuneReportCallback(
                 {
@@ -90,7 +100,10 @@ def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10, c
                 },
                 on="validation_end"
             )
-        ])
+        ],
+        plugins=[RayLightningEnvironment()]
+    )
+    trainer = prepare_trainer(trainer)
     trainer.fit(model)
 
 
@@ -128,24 +141,42 @@ def tune_spanet(
         parameter_columns=list(config.keys()),
         metric_columns=["val_loss", "mean_accuracy", "training_iteration"]
     )
+    
+    if gpus_per_trial > 0:
+        scaling_config = ScalingConfig(
+            num_workers=subprocess_factor,
+            use_gpu=True,
+            resources_per_worker={"CPU": cpus_per_trial, "GPU": gpus_per_trial}
+        )
+    else:
+        scaling_config = ScalingConfig(
+            num_workers=subprocess_factor,
+            use_gpu=False,
+            resources_per_worker={"CPU": cpus_per_trial}
+        )
+
+    run_config = air.RunConfig(
+        name=name,
+        storage_path=log_dir,
+        progress_reporter=reporter,
+    )
 
     train_fn_with_parameters = tune.with_parameters(
         spanet_trial,
         base_options_file=base_options_file,
         home_dir=os.getcwd(),
         num_epochs=num_epochs,
-        cpus_per_trial=cpus_per_trial,
-        gpus_per_trial=gpus_per_trial,
-        subprocess_factor=subprocess_factor
     )
 
-    resources_per_trial = {"cpu": cpus_per_trial, "gpu": gpus_per_trial}
+    ray_trainer = TorchTrainer(
+        train_fn_with_parameters,
+        scaling_config=scaling_config,
+        run_config=run_config,
+    ) 
 
     tuner = tune.Tuner(
-        tune.with_resources(
-            train_fn_with_parameters,
-            resources=resources_per_trial
-        ),
+        ray_trainer,
+        param_space=config,
         tune_config=tune.TuneConfig(
             metric="mean_accuracy",
             mode="max",
@@ -153,16 +184,11 @@ def tune_spanet(
             search_alg=HyperOptSearch(),
             num_samples=num_trials,
         ),
-        run_config=air.RunConfig(
-            name=name,
-            storage_path=log_dir,
-            progress_reporter=reporter,
-        ),
-        param_space=config,
     )
     results = tuner.fit()
 
     print("Best hyperparameters found were: ", results.get_best_result().config)
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
