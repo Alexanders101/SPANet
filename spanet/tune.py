@@ -15,6 +15,8 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from spanet import JetReconstructionModel, Options
 
 try:
+    import ray
+    ray.init(address='auto') 
     from ray import air, tune
     from ray.tune import CLIReporter
     from ray.tune.schedulers import ASHAScheduler
