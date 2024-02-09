@@ -49,63 +49,51 @@ DEFAULT_CONFIG = {
     "l2_penalty": tune.loguniform(1e-6, 1e-2)
 }
 
-
-def spanet_trial(config, base_options_file: str, home_dir: str, num_epochs=10):
-    if not os.path.isabs(base_options_file):
-        base_options_file = f"{home_dir}/{base_options_file}"
-
-    # -------------------------------------------------------------------------------------------------------
-    # Create options file and load any optional extra information.
-    # -------------------------------------------------------------------------------------------------------
-    options = Options()
+def get_base_options(base_options_file):
+    base_options = Options()
     with open(base_options_file, 'r') as json_file:
-        options.update_options(json.load(json_file))
+        base_options.update_options(json.load(json_file))
+    base_options.num_dataloader_workers = 0
+    return base_options
 
-    options.update_options(config)
-    options.epochs = num_epochs
-    options.num_dataloader_workers = 0
+def set_spanet_trial(base_options, max_epochs):
+    options = base_options
+    num_epochs = max_epochs
+    def spanet_trial(config):
+        # -------------------------------------------------------------------------------------------------------
+        # Create options file and load any optional extra information.
+        # -------------------------------------------------------------------------------------------------------
+        options.update_options(config)
 
-    if not os.path.isabs(options.event_info_file):
-        options.event_info_file = f"{home_dir}/{options.event_info_file}"
+        # Create base model
+        model = JetReconstructionModel(options)
 
-    if len(options.training_file) > 0 and not os.path.isabs(options.training_file):
-        options.training_file = f"{home_dir}/{options.training_file}"
-
-    if len(options.validation_file) > 0 and not os.path.isabs(options.validation_file):
-        options.validation_file = f"{home_dir}/{options.validation_file}"
-
-    if len(options.testing_file) > 0 and not os.path.isabs(options.testing_file):
-        options.testing_file = f"{home_dir}/{options.testing_file}"
-
-    # Create base model
-    model = JetReconstructionModel(options)
-
-    # Run a simplified trainer for single trial.
-    # Typically, we only use 1 gpu per trial so don't need any of the DDP stuff.
-    trainer = pl.Trainer(
-        max_epochs=num_epochs,
-        accelerator="auto",
-        devices="auto",
-        gradient_clip_val=options.gradient_clip if options.gradient_clip > 0 else None,
-        enable_progress_bar=False,
-        logger=TensorBoardLogger(
-            save_dir=os.getcwd(), name="", version="."
-        ),
-        strategy=RayDDPStrategy(),
-        callbacks=[
-            TuneReportCallback(
-                {
-                    "loss": "loss/total_loss",
-                    "mean_accuracy": "validation_accuracy"
-                },
-                on="validation_end"
-            )
-        ],
-        plugins=[RayLightningEnvironment()]
-    )
-    trainer = prepare_trainer(trainer)
-    trainer.fit(model)
-
+        # Run a simplified trainer for single trial.
+        # Typically, we only use 1 gpu per trial so don't need any of the DDP stuff.
+        trainer = pl.Trainer(
+            max_epochs=num_epochs,
+            accelerator="auto",
+            devices="auto",
+            gradient_clip_val=options.gradient_clip if options.gradient_clip > 0 else None,
+            enable_progress_bar=False,
+            logger=TensorBoardLogger(
+                save_dir=os.getcwd(), name="", version="."
+            ),
+            strategy=RayDDPStrategy(),
+            callbacks=[
+                TuneReportCallback(
+                    {
+                        "loss": "loss/total_loss",
+                        "mean_accuracy": "validation_accuracy"
+                    },
+                    on="validation_end"
+                )
+            ],
+            plugins=[RayLightningEnvironment()]
+        )
+        trainer = prepare_trainer(trainer)
+        trainer.fit(model)
+    return spanet_trial
 
 def tune_spanet(
     base_options_file: str, 
@@ -116,7 +104,7 @@ def tune_spanet(
     gpus_per_trial: int = 0,
     name: str = "spanet_asha_tune",
     log_dir: str = "spanet_output",
-    subprocess_factor: int = 0,
+    num_workers: int = 1, 
 ):
     # Load the search space. 
     # This seems to be the best way to load arbitrary tune search spaces.
@@ -144,13 +132,13 @@ def tune_spanet(
     
     if gpus_per_trial > 0:
         scaling_config = ScalingConfig(
-            num_workers=subprocess_factor,
+            num_workers=num_workers,
             use_gpu=True,
             resources_per_worker={"CPU": cpus_per_trial, "GPU": gpus_per_trial}
         )
     else:
         scaling_config = ScalingConfig(
-            num_workers=subprocess_factor,
+            num_workers=num_workers,
             use_gpu=False,
             resources_per_worker={"CPU": cpus_per_trial}
         )
@@ -160,23 +148,19 @@ def tune_spanet(
         storage_path=log_dir,
         progress_reporter=reporter,
     )
-
-    train_fn_with_parameters = tune.with_parameters(
-        spanet_trial,
-        base_options_file=base_options_file,
-        home_dir=os.getcwd(),
-        num_epochs=num_epochs,
-    )
+    
+    base_options = get_base_options(base_options_file)
+    spanet_trial = set_spanet_trial(base_options, num_epochs)
 
     ray_trainer = TorchTrainer(
-        train_fn_with_parameters,
+        spanet_trial, 
         scaling_config=scaling_config,
         run_config=run_config,
     ) 
 
     tuner = tune.Tuner(
         ray_trainer,
-        param_space=config,
+        param_space={"train_loop_config": config},
         tune_config=tune.TuneConfig(
             metric="mean_accuracy",
             mode="max",
@@ -214,8 +198,8 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "-sf", "--subprocess_factor", type=int, default=0,
-        help="The number of subprocesses per trial is the number of cpu per trial multiplied by this factor."
+        "-w", "--num_workers", type=int, default=1,
+        help="each worker use -c cpus and -g gpus"
     )
 
     parser.add_argument(
