@@ -23,6 +23,7 @@ try:
     from ray.train import RunConfig, ScalingConfig, CheckpointConfig
     from ray.train.lightning import (
             RayDDPStrategy,
+            RayFSDPStrategy,
             RayLightningEnvironment,
             RayTrainReportCallback,
             prepare_trainer
@@ -79,7 +80,6 @@ def set_spanet_trial(base_options, max_epochs):
             logger=TensorBoardLogger(
                 save_dir=os.getcwd(), name="", version="."
             ),
-            strategy=RayDDPStrategy(),
             callbacks=[
                 TuneReportCallback(
                     {
@@ -89,6 +89,7 @@ def set_spanet_trial(base_options, max_epochs):
                     on="validation_end"
                 )
             ],
+            strategy=RayDDPStrategy(), 
             plugins=[RayLightningEnvironment()]
         )
         trainer = prepare_trainer(trainer)
