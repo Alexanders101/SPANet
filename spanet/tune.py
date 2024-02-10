@@ -16,7 +16,7 @@ from spanet import JetReconstructionModel, Options
 
 try:
     import ray
-    ray.init(address='auto') 
+    ray.init()
     from ray import air, tune
     from ray.tune import CLIReporter
     from ray.tune.schedulers import ASHAScheduler
