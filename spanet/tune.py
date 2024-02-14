@@ -33,7 +33,7 @@ try:
     from ray.train.torch import TorchTrainer
 
 except ImportError:
-    print("Tuning script requires additional dependencies. Please run: pip install \"ray[tune]\" hyperopt")
+    print("Tuning script requires additional dependencies. Please run: pip install \"ray[tune]\" \"ray[train]\" hyperopt")
     exit()
 
 
@@ -59,8 +59,9 @@ def get_base_options(base_options_file):
     base_options.num_dataloader_workers = 0
     return base_options
 
-def set_spanet_trial(base_options, max_epochs):
+def set_spanet_trial(base_options, max_epochs, cpus_per_trial, workers_per_cpu):
     options = base_options
+    options.num_dataloader_workers = cpus_per_trial * workers_per_cpu
     num_epochs = max_epochs
     def spanet_trial(config):
         # -------------------------------------------------------------------------------------------------------
@@ -104,10 +105,10 @@ def tune_spanet(
     num_trials: int = 10, 
     num_epochs: int = 10, 
     cpus_per_trial: int = 1,
+    workers_per_cpu: int = 4, 
     gpus_per_trial: int = 0,
     name: str = "spanet_asha_tune",
     log_dir: str = "spanet_output",
-    num_workers: int = 1, 
 ):
     # Load the search space. 
     # This seems to be the best way to load arbitrary tune search spaces.
@@ -135,13 +136,13 @@ def tune_spanet(
     
     if gpus_per_trial > 0:
         scaling_config = ScalingConfig(
-            num_workers=num_workers,
+            num_workers=1,
             use_gpu=True,
             resources_per_worker={"CPU": cpus_per_trial, "GPU": gpus_per_trial}
         )
     else:
         scaling_config = ScalingConfig(
-            num_workers=num_workers,
+            num_workers=1,
             use_gpu=False,
             resources_per_worker={"CPU": cpus_per_trial}
         )
@@ -153,7 +154,7 @@ def tune_spanet(
     )
     
     base_options = get_base_options(base_options_file)
-    spanet_trial = set_spanet_trial(base_options, num_epochs)
+    spanet_trial = set_spanet_trial(base_options, num_epochs, cpus_per_trial, workers_per_cpu)
 
     ray_trainer = TorchTrainer(
         spanet_trial, 
@@ -196,13 +197,13 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "-g", "--gpus_per_trial", type=int, default=0,
-        help="Number of GPUs available for each parallel trial."
+        "-w", "--workers_per_cpu", type=int, default=4,
+        help="Number of dataloader workers per cpu"
     )
 
     parser.add_argument(
-        "-w", "--num_workers", type=int, default=1,
-        help="each worker use -c cpus and -g gpus"
+        "-g", "--gpus_per_trial", type=int, default=0,
+        help="Number of GPUs available for each parallel trial."
     )
 
     parser.add_argument(
