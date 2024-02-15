@@ -14,7 +14,7 @@ def assignment_cross_entropy_loss(prediction: Tensor, target_data: Tensor, targe
     # Find the unravelling shape required to flatten the target indices
     ravel_sizes = torch.tensor(prediction_shape).flip(0)
     ravel_sizes = torch.cumprod(ravel_sizes, 0)
-    ravel_sizes = torch.div(ravel_sizes, torch.clamp(ravel_sizes[0], min=1e-8), rounding_mode='floor')
+    ravel_sizes = torch.div(ravel_sizes, torch.clamp(ravel_sizes[0], min=1), rounding_mode='floor')
     # ravel_sizes = ravel_sizes // ravel_sizes[0]
     ravel_sizes = ravel_sizes.flip(0).unsqueeze(0)
     ravel_sizes = ravel_sizes.to(target_data.device)
