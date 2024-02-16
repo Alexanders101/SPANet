@@ -1,3 +1,4 @@
+import torch
 from torch import Tensor, nn, jit
 
 from spanet.options import Options
@@ -26,6 +27,9 @@ class GTrXL(nn.Module):
             key_padding_mask=padding_mask,
             need_weights=False
         )
+
+        # pytorch MHA issue #41508
+        output = torch.nan_to_num(output, nan=0.0)
 
         output = self.attention_gate(output, x)
 
