@@ -1,4 +1,3 @@
-import torch
 from torch import Tensor, nn, jit
 
 from spanet.options import Options
