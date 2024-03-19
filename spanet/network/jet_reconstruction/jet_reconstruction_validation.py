@@ -1,5 +1,6 @@
 from typing import Dict, Callable
 import warnings
+from collections import defaultdict
 
 import numpy as np
 import torch
@@ -15,6 +16,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
     def __init__(self, options: Options, torch_script: bool = False):
         super(JetReconstructionValidation, self).__init__(options, torch_script)
         self.evaluator = SymmetricEvaluator(self.training_dataset.event_info)
+        # self.validation_step_metrics_outputs = []
 
     @property
     def particle_metrics(self) -> Dict[str, Callable[[np.ndarray, np.ndarray], float]]:
@@ -147,9 +149,32 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         for name, value in metrics.items():
             if not np.isnan(value):
-                self.log(name, value, sync_dist=True)
+                self.log(name, value, sync_dist=True, on_epoch=True)
+
+        # self.validation_step_metrics_outputs.append(metrics)
 
         return metrics
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
+
+#    def on_validation_epoch_end(self):
+#        # merge metrics from different mini batches into one dict
+#        metrics_merged = defaultdict(list) 
+#        for m in self.validation_step_metrics_outputs:
+#            for key, value in m.items():
+#                metrics_merged[key].append(value)
+#
+#        # average each metric over number of mini batches
+#        metrics_averaged = {}
+#        for key, values in metrics_merged.items():
+#            metrics_averaged[f"mean_{key}"] = np.mean(values)
+#
+#        # log metrics
+#        for name, value in metrics_averaged.items():
+#            if not np.isnan(value):
+#                self.log(name, value, sync_dist=True)
+#
+#        self.validation_step_metrics_outputs.clear()
+
+
