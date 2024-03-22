@@ -16,8 +16,9 @@ class JetReconstructionValidation(JetReconstructionNetwork):
     def __init__(self, options: Options, torch_script: bool = False):
         super(JetReconstructionValidation, self).__init__(options, torch_script)
         self.evaluator = SymmetricEvaluator(self.training_dataset.event_info)
-        self.particle_index_tensor_np = self.particle_index_tensor.cpu().detach().numpy()
-        self.particle_weights_tensor_np = self.particle_weights_tensor.cpu().detach().numpy()
+        if self.balance_particles:
+            self.particle_index_tensor_np = self.particle_index_tensor.cpu().detach().numpy()
+            self.particle_weights_tensor_np = self.particle_weights_tensor.cpu().detach().numpy()
         # self.validation_step_metrics_outputs = []
 
     @property
