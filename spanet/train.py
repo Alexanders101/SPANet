@@ -141,7 +141,7 @@ def main(
     callbacks = [
         ModelCheckpoint(
             verbose=options.verbose_output,
-            monitor='validation_accuracy',
+            monitor='validation_balanced_jet_accuracy',
             save_top_k=3,
             mode='max',
             save_last=True
