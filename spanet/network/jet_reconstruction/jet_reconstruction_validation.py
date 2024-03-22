@@ -16,6 +16,8 @@ class JetReconstructionValidation(JetReconstructionNetwork):
     def __init__(self, options: Options, torch_script: bool = False):
         super(JetReconstructionValidation, self).__init__(options, torch_script)
         self.evaluator = SymmetricEvaluator(self.training_dataset.event_info)
+        self.particle_index_tensor_np = self.particle_index_tensor.cpu().detach().numpy()
+        self.particle_weights_tensor_np = self.particle_weights_tensor.cpu().detach().numpy()
         # self.validation_step_metrics_outputs = []
 
     @property
@@ -89,6 +91,19 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         # Compute the sum accuracy of all complete events to act as our target for
         # early stopping, hyperparameter optimization, learning rate scheduling, etc.
         metrics["validation_accuracy"] = metrics[f"jet/accuracy_{num_targets}_of_{num_targets}"]
+
+
+        jet_full_target_accuracies = np.zeros((batch_size), dtype=float)
+        for i in range(1, num_targets + 1):
+            filter = num_particles == i
+            jet_full_target_accuracies[filter] = jet_accuracies[filter] / i
+
+        weights = np.ones_like(jet_full_target_accuracies)
+        if self.balance_particles:
+            class_indices = (stacked_masks * self.particle_index_tensor_np[..., np.newaxis]).sum(0)
+            weights *= self.particle_weights_tensor_np[class_indices]
+
+        metrics["validation_balanced_jet_accuracy"] = (jet_full_target_accuracies * weights).sum() / weights.sum()
 
         return metrics
 
