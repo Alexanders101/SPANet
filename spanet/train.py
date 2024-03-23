@@ -141,7 +141,22 @@ def main(
     callbacks = [
         ModelCheckpoint(
             verbose=options.verbose_output,
-            monitor='validation_balanced_jet_accuracy',
+            filename='{epoch}-{step}-{validation_accuracy:.2f}',
+            monitor='validation_accuracy',
+            save_top_k=3,
+            mode='max',
+        ),
+        ModelCheckpoint(
+            verbose=options.verbose_output,
+            filename='{epoch}-{step}-{validation_accuracy_epoch:.2f}',
+            monitor='validation_accuracy_epoch',
+            save_top_k=3,
+            mode='max',
+        ),
+        ModelCheckpoint(
+            verbose=options.verbose_output,
+            filename='{epoch}-{step}-{validation_average_jet_accuracy_epoch:.2f}',
+            monitor='validation_average_jet_accuracy_epoch',
             save_top_k=3,
             mode='max',
             save_last=True
