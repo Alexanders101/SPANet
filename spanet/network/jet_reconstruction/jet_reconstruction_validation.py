@@ -96,15 +96,15 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         jet_full_target_accuracies = np.zeros((batch_size), dtype=float)
         for i in range(1, num_targets + 1):
-            filter = num_particles == i
-            jet_full_target_accuracies[filter] = jet_accuracies[filter] / i
+            has_i_target = num_particles == i
+            jet_full_target_accuracies[has_i_target] = jet_accuracies[has_i_target] / i
 
         weights = np.ones_like(jet_full_target_accuracies)
         if self.balance_particles:
             class_indices = (stacked_masks * self.particle_index_tensor_np[..., np.newaxis]).sum(0)
             weights *= self.particle_weights_tensor_np[class_indices]
 
-        metrics["validation_balanced_jet_accuracy"] = (jet_full_target_accuracies * weights).sum() / weights.sum()
+        metrics["validation_average_jet_accuracy"] = (jet_full_target_accuracies * weights).sum() / weights.sum()
 
         return metrics
 
@@ -165,7 +165,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         for name, value in metrics.items():
             if not np.isnan(value):
-                self.log(name, value, sync_dist=True, on_epoch=True)
+                self.log(name, value, sync_dist=True, on_step=True, on_epoch=True)
 
         # self.validation_step_metrics_outputs.append(metrics)
 
