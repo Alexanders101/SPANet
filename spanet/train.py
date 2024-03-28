@@ -148,15 +148,8 @@ def main(
         ),
         ModelCheckpoint(
             verbose=options.verbose_output,
-            filename='{epoch}-{step}-{validation_accuracy_epoch:.3f}',
-            monitor='validation_accuracy_epoch',
-            save_top_k=3,
-            mode='max',
-        ),
-        ModelCheckpoint(
-            verbose=options.verbose_output,
-            filename='{epoch}-{step}-{validation_average_jet_accuracy_epoch:.3f}',
-            monitor='validation_average_jet_accuracy_epoch',
+            filename='{epoch}-{step}-{validation_average_jet_accuracy:.3f}',
+            monitor='validation_average_jet_accuracy',
             save_top_k=3,
             mode='max',
             save_last=True
