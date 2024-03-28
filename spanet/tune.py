@@ -87,7 +87,7 @@ def set_spanet_trial(base_options, max_epochs, cpus_per_trial, workers_per_cpu):
                 TuneReportCallback(
                     {
                         "loss": "loss/total_loss",
-                        "val_avg_accuracy": "validation_average_jet_accuracy_epoch"
+                        "val_avg_accuracy": "validation_average_jet_accuracy"
                     },
                     on="validation_end"
                 )
