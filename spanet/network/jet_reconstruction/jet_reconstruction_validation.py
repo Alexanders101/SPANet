@@ -165,7 +165,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         for name, value in metrics.items():
             if not np.isnan(value):
-                self.log(name, value, sync_dist=True, on_step=True, on_epoch=True)
+                self.log(name, value, sync_dist=True, on_epoch=True)
 
         # self.validation_step_metrics_outputs.append(metrics)
 
