@@ -141,13 +141,6 @@ def main(
     callbacks = [
         ModelCheckpoint(
             verbose=options.verbose_output,
-            filename='{epoch}-{step}-{validation_accuracy:.3f}',
-            monitor='validation_accuracy',
-            save_top_k=3,
-            mode='max',
-        ),
-        ModelCheckpoint(
-            verbose=options.verbose_output,
             filename='{epoch}-{step}-{validation_average_jet_accuracy:.3f}',
             monitor='validation_average_jet_accuracy',
             save_top_k=3,
