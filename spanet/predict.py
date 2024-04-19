@@ -66,13 +66,14 @@ def create_hdf5_output(
 
 def main(log_directory: str,
          output_file: str,
+         checkpoint: str,
          test_file: Optional[str],
          event_file: Optional[str],
          batch_size: Optional[int],
          output_vectors: bool,
          gpu: bool,
          fp16: bool):
-    model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16)
+    model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, checkpoint=checkpoint)
 
     if output_vectors:
         evaluation, full_outputs = evaluate_on_test_dataset(model, return_full_output=True, fp16=fp16)
@@ -90,6 +91,9 @@ if __name__ == '__main__':
 
     parser.add_argument("output_file", type=str,
                         help="The output HDF5 to create with the new predicted jets for each event.")
+
+    parser.add_argument("-ckpt", "--checkpoint", type=str, default=None,
+                        help="Specify which checkpoint in the log_directory you want to load.")
 
     parser.add_argument("-tf", "--test_file", type=str, default=None,
                         help="Replace the test file in the options with a custom one. "
