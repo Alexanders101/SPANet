@@ -147,6 +147,7 @@ class InputType(str, Enum):
 class AssignmentTargets(NamedTuple):
     indices: Tensor
     mask: Tensor
+    weight: Tensor
 
 
 class Batch(NamedTuple):

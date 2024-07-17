@@ -4,7 +4,7 @@ from torch.nn import functional as F
 
 
 @torch.jit.script
-def assignment_cross_entropy_loss(prediction: Tensor, target_data: Tensor, target_mask: Tensor, gamma: float) -> Tensor:
+def assignment_cross_entropy_loss(prediction: Tensor, target_data: Tensor, target_mask: Tensor, weight: Tensor, gamma: float) -> Tensor:
     batch_size = prediction.shape[0]
     prediction_shape = prediction.shape[1:]
 
@@ -28,7 +28,7 @@ def assignment_cross_entropy_loss(prediction: Tensor, target_data: Tensor, targe
 
     focal_scale = (1 - torch.exp(log_probability)) ** gamma
 
-    return -log_probability * focal_scale
+    return -log_probability * focal_scale * weight
 
 
 @torch.jit.script
