@@ -98,8 +98,9 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         # early stopping, hyperparameter optimization, learning rate scheduling, etc.
         metrics["validation_accuracy"] = metrics[f"jet/accuracy_{num_targets}_of_{num_targets}"]
 
-        weighted_avg_jet_accuracy = weighted_jet_accuracies / tot_target_weights
-        metrics["validation_average_jet_accuracy"] = np.nanmean(weighted_avg_jet_accuracy)
+        has_targets = tot_target_weights > 0
+        weighted_avg_jet_accuracy = weighted_jet_accuracies[has_targets] / tot_target_weights[has_targets]
+        metrics["validation_average_jet_accuracy"] = np.mean(weighted_avg_jet_accuracy)
 
         return metrics
 
