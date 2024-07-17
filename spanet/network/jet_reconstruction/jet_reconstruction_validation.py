@@ -99,7 +99,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         metrics["validation_accuracy"] = metrics[f"jet/accuracy_{num_targets}_of_{num_targets}"]
 
         weighted_avg_jet_accuracy = weighted_jet_accuracies / tot_target_weights
-        metrics["validation_average_jet_accuracy"] = np.mean(weighted_avg_jet_accuracy)
+        metrics["validation_average_jet_accuracy"] = np.nanmean(weighted_avg_jet_accuracy)
 
         return metrics
 
