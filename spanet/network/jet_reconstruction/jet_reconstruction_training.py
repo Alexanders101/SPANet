@@ -186,12 +186,35 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             current_target = targets[key]
 
             weight = None if not self.balance_classifications else self.classification_weights[key]
-            current_loss = F.cross_entropy(
-                current_prediction,
-                current_target,
-                ignore_index=-1,
-                weight=weight
-            )
+            if self.options.classification_focal_gamma == 0:
+                current_loss = F.cross_entropy(
+                    current_prediction,
+                    current_target,
+                    ignore_index=-1,
+                    weight=weight
+                )
+            else:
+                # From https://github.com/AdeelH/pytorch-multi-class-focal-loss/blob/master/focal_loss.py
+                log_p = F.log_softmax(current_prediction, dim=1)
+                ce = F.nll_loss(
+                    log_p,
+                    current_target,
+                    ignore_index=-1,
+                    weight=weight,
+                    reduction='none'
+                )
+                # Get true class column from each row
+                all_rows = torch.arange(len(current_target))
+                log_pt = log_p[all_rows, current_target]
+                # Compute focal term: (1 - pt)^gamma
+                focal_term = (1 - log_pt.exp()) ** self.options.classification_focal_gamma
+                # Full loss: -alpha * ((1 - pt)^gamma) * log(pt)
+                if weight is None:
+                    # Take mean
+                    current_loss = torch.mean(focal_term * ce)
+                else:
+                    # Divide by sum of class weights
+                    current_loss = torch.sum(focal_term * ce) / weight[current_target].sum()
 
             classification_terms.append(self.options.classification_loss_scale * current_loss)
 

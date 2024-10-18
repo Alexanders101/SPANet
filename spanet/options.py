@@ -235,6 +235,9 @@ class Options(Namespace):
         # Scalar term for classification Cross Entropy loss term
         self.classification_loss_scale: float = 0.0
 
+        # Gamma exponent for classification focal loss. Setting it to 0.0 will disable focal loss and use regular cross-entropy.
+        self.classification_focal_gamma: float = 0.0
+
         # Automatically balance loss terms using Jacobians.
         self.balance_losses: bool = True
 
