@@ -131,11 +131,12 @@ def main(
 
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
     log_dir = getcwd() if log_dir is None else log_dir
-    logger = (
-        WandbLogger(name=name, save_dir=log_dir)
-        if _WANDB_AVAILABLE else
-        TensorBoardLogger(save_dir=log_dir, name=name)
-    )
+    logger = TensorBoardLogger(save_dir=log_dir, name=name)
+    # logger = (
+    #     WandbLogger(name=name, save_dir=log_dir)
+    #     if _WANDB_AVAILABLE else
+    #     TensorBoardLogger(save_dir=log_dir, name=name)
+    # )
 
     # Create the checkpoint for this training run. We will save the best validation networks based on 'accuracy'
     callbacks = [
