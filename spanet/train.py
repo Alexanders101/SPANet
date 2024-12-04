@@ -131,17 +131,19 @@ def main(
 
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
     log_dir = getcwd() if log_dir is None else log_dir
-    logger = (
-        WandbLogger(name=name, save_dir=log_dir)
-        if _WANDB_AVAILABLE else
-        TensorBoardLogger(save_dir=log_dir, name=name)
-    )
+    logger = TensorBoardLogger(save_dir=log_dir, name=name)
+    # logger = (
+    #     WandbLogger(name=name, save_dir=log_dir)
+    #     if _WANDB_AVAILABLE else
+    #     TensorBoardLogger(save_dir=log_dir, name=name)
+    # )
 
     # Create the checkpoint for this training run. We will save the best validation networks based on 'accuracy'
     callbacks = [
         ModelCheckpoint(
             verbose=options.verbose_output,
-            monitor='validation_accuracy',
+            filename='{epoch}-{step}-{validation_average_jet_accuracy:.3f}',
+            monitor='validation_average_jet_accuracy',
             save_top_k=3,
             mode='max',
             save_last=True

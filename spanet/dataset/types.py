@@ -117,6 +117,7 @@ ClassificationInfo = str
 
 class SpecialKey(str, Enum):
     Mask = "MASK"
+    Weight = "WEIGHT"
     Event = "EVENT"
     Inputs = "INPUTS"
     Targets = "TARGETS"
@@ -146,6 +147,7 @@ class InputType(str, Enum):
 class AssignmentTargets(NamedTuple):
     indices: Tensor
     mask: Tensor
+    weight: Tensor
 
 
 class Batch(NamedTuple):

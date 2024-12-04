@@ -87,7 +87,7 @@ def set_spanet_trial(base_options, max_epochs, cpus_per_trial, workers_per_cpu):
                 TuneReportCallback(
                     {
                         "loss": "loss/total_loss",
-                        "mean_accuracy": "validation_accuracy"
+                        "val_avg_accuracy": "validation_average_jet_accuracy"
                     },
                     on="validation_end"
                 )
@@ -131,7 +131,7 @@ def tune_spanet(
 
     reporter = CLIReporter(
         parameter_columns=list(config.keys()),
-        metric_columns=["val_loss", "mean_accuracy", "training_iteration"]
+        metric_columns=["loss", "val_avg_accuracy", "training_iteration"]
     )
     
     if gpus_per_trial > 0:
@@ -166,7 +166,7 @@ def tune_spanet(
         ray_trainer,
         param_space={"train_loop_config": config},
         tune_config=tune.TuneConfig(
-            metric="mean_accuracy",
+            metric="val_avg_accuracy",
             mode="max",
             scheduler=scheduler,
             search_alg=HyperOptSearch(),

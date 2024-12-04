@@ -31,9 +31,9 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             for particle in self.event_particle_names
         }
 
-    def particle_symmetric_loss(self, assignment: Tensor, detection: Tensor, target: Tensor, mask: Tensor) -> Tensor:
-        assignment_loss = assignment_cross_entropy_loss(assignment, target, mask, self.options.focal_gamma)
-        detection_loss = F.binary_cross_entropy_with_logits(detection, mask.float(), reduction='none')
+    def particle_symmetric_loss(self, assignment: Tensor, detection: Tensor, target: Tensor, mask: Tensor, weight: Tensor) -> Tensor:
+        assignment_loss = assignment_cross_entropy_loss(assignment, target, mask, weight, self.options.focal_gamma)
+        detection_loss = F.binary_cross_entropy_with_logits(detection, mask.float(), weight=weight, reduction='none')
 
         return torch.stack((
             self.options.assignment_loss_scale * assignment_loss,
@@ -49,8 +49,8 @@ class JetReconstructionTraining(JetReconstructionNetwork):
 
             # Find the assignment loss for each particle in this permutation.
             current_permutation_loss = tuple(
-                self.particle_symmetric_loss(assignment, detection, target, mask)
-                for assignment, detection, (target, mask)
+                self.particle_symmetric_loss(assignment, detection, target, mask, weight)
+                for assignment, detection, (target, mask, weight)
                 in zip(assignments, detections, targets[permutation])
             )
 
@@ -85,7 +85,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         self,
         assignments: List[Tensor],
         detections: List[Tensor],
-        targets: Tuple[Tuple[Tensor, Tensor], ...]
+        targets: Tuple[Tuple[Tensor, Tensor, Tensor], ...]
     ) -> Tuple[Tensor, Tensor]:
         # We are only going to look at a single prediction points on the distribution for more stable loss calculation
         # We multiply the softmax values by the size of the permutation group to make every target the same
@@ -212,7 +212,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         symmetric_losses, best_indices = self.symmetric_losses(
             outputs.assignments,
             outputs.detections,
-            batch.assignment_targets
+            batch.assignment_targets,
         )
 
         # Construct the newly permuted masks based on the minimal permutation found during NLL loss.
