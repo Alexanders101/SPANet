@@ -157,6 +157,14 @@ The additional outputs will only be present if you define any `REGRESSION` or `C
 
 **Log Probability vs. Probability** For additional numerical stability, you may choose to output the log distributions, `log P(x)`, for all probability outputs instead. If you specify `--output-log-transform` in the export script, then the `*_assignment_probability` and `*_detection_probability` outputs will be replaced with `*_assignment_log_probability` and `*_detection_log_probability`. The classification outputs will also be represented as log-probabilities, although the name will not change.
 
+## Contributors
+Thank you to all of the contributors!
+
+For contributing the DiHiggs and TriHiggs updates and Version 2.3
+Javier Duarte - [@jmduarte] (https://www.github.com/jmduarte)
+Billy Li - [@billy000400] (https://www.github.com/billy000400)
+
+
 ## Citation
 If you use this software for a publication, please cite the following:
 ```bibtex
