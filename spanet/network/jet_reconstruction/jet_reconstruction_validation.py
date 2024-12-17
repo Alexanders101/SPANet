@@ -1,5 +1,6 @@
 from typing import Dict, Callable
 import warnings
+from collections import defaultdict
 
 import numpy as np
 import torch
@@ -15,6 +16,10 @@ class JetReconstructionValidation(JetReconstructionNetwork):
     def __init__(self, options: Options, torch_script: bool = False):
         super(JetReconstructionValidation, self).__init__(options, torch_script)
         self.evaluator = SymmetricEvaluator(self.training_dataset.event_info)
+        if self.balance_particles:
+            self.particle_index_tensor_np = self.particle_index_tensor.cpu().detach().numpy()
+            self.particle_weights_tensor_np = self.particle_weights_tensor.cpu().detach().numpy()
+        # self.validation_step_metrics_outputs = []
 
     @property
     def particle_metrics(self) -> Dict[str, Callable[[np.ndarray, np.ndarray], float]]:
@@ -32,7 +37,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
             # "average_precision": sk_metrics.average_precision_score
         }
 
-    def compute_metrics(self, jet_predictions, particle_scores, stacked_targets, stacked_masks):
+    def compute_metrics(self, jet_predictions, particle_scores, stacked_targets, stacked_masks, stacked_weights):
         event_permutation_group = self.event_permutation_tensor.cpu().numpy()
         num_permutations = len(event_permutation_group)
         num_targets, batch_size = stacked_masks.shape
@@ -42,14 +47,17 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         # First compute raw_old accuracy so that we can get an accuracy score for each event
         # This will also act as the method for choosing the best permutation to compare for the other metrics.
         jet_accuracies = np.zeros((num_permutations, num_targets, batch_size), dtype=bool)
+        weighted_jet_accuracies = np.zeros((num_permutations, num_targets, batch_size), dtype=bool)
         particle_accuracies = np.zeros((num_permutations, num_targets, batch_size), dtype=bool)
         for i, permutation in enumerate(event_permutation_group):
-            for j, (prediction, target) in enumerate(zip(jet_predictions, stacked_targets[permutation])):
+            for j, (prediction, target, weight) in enumerate(zip(jet_predictions, stacked_targets[permutation], stacked_weights[permutation])):
                 jet_accuracies[i, j] = np.all(prediction == target, axis=1)
+                weighted_jet_accuracies[i, j] = np.all(prediction == target, axis=1) * weight
 
             particle_accuracies[i] = stacked_masks[permutation] == particle_predictions
 
         jet_accuracies = jet_accuracies.sum(1)
+        weighted_jet_accuracies = weighted_jet_accuracies.sum(1)
         particle_accuracies = particle_accuracies.sum(1)
 
         # Select the primary permutation which we will use for all other metrics.
@@ -59,7 +67,9 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         # Compute final accuracy vectors for output
         num_particles = stacked_masks.sum(0)
+        tot_target_weights = (stacked_masks * stacked_weights).sum(0)
         jet_accuracies = jet_accuracies.max(0)
+        weighted_jet_accuracies = weighted_jet_accuracies.max(0)
         particle_accuracies = particle_accuracies.max(0)
 
         # Create the logging dictionaries
@@ -88,6 +98,10 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         # early stopping, hyperparameter optimization, learning rate scheduling, etc.
         metrics["validation_accuracy"] = metrics[f"jet/accuracy_{num_targets}_of_{num_targets}"]
 
+        has_targets = tot_target_weights > 0
+        weighted_avg_jet_accuracy = weighted_jet_accuracies[has_targets] / tot_target_weights[has_targets]
+        metrics["validation_average_jet_accuracy"] = np.mean(weighted_avg_jet_accuracy)
+
         return metrics
 
     def validation_step(self, batch, batch_idx) -> Dict[str, np.float32]:
@@ -101,9 +115,11 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         # Stack all of the targets into single array, we will also move to numpy for easier the numba computations.
         stacked_targets = np.zeros(num_targets, dtype=object)
         stacked_masks = np.zeros((num_targets, batch_size), dtype=bool)
-        for i, (target, mask) in enumerate(targets):
+        stacked_weights = np.zeros((num_targets, batch_size), dtype=float)
+        for i, (target, mask, weight) in enumerate(targets):
             stacked_targets[i] = target.detach().cpu().numpy()
             stacked_masks[i] = mask.detach().cpu().numpy()
+            stacked_weights[i] = weight.detach().cpu().numpy()
 
         regression_targets = {
             key: value.detach().cpu().numpy()
@@ -124,7 +140,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
                     prediction[:, indices] = np.sort(prediction[:, indices])
                     target[:, indices] = np.sort(target[:, indices])
 
-        metrics.update(self.compute_metrics(jet_predictions, particle_scores, stacked_targets, stacked_masks))
+        metrics.update(self.compute_metrics(jet_predictions, particle_scores, stacked_targets, stacked_masks, stacked_weights))
 
         for key in regressions:
             delta = regressions[key] - regression_targets[key]
@@ -147,9 +163,32 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         for name, value in metrics.items():
             if not np.isnan(value):
-                self.log(name, value, sync_dist=True)
+                self.log(name, value, sync_dist=True, on_epoch=True)
+
+        # self.validation_step_metrics_outputs.append(metrics)
 
         return metrics
 
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
+
+#    def on_validation_epoch_end(self):
+#        # merge metrics from different mini batches into one dict
+#        metrics_merged = defaultdict(list) 
+#        for m in self.validation_step_metrics_outputs:
+#            for key, value in m.items():
+#                metrics_merged[key].append(value)
+#
+#        # average each metric over number of mini batches
+#        metrics_averaged = {}
+#        for key, values in metrics_merged.items():
+#            metrics_averaged[f"mean_{key}"] = np.mean(values)
+#
+#        # log metrics
+#        for name, value in metrics_averaged.items():
+#            if not np.isnan(value):
+#                self.log(name, value, sync_dist=True)
+#
+#        self.validation_step_metrics_outputs.clear()
+
+
