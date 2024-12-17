@@ -161,8 +161,8 @@ The additional outputs will only be present if you define any `REGRESSION` or `C
 Thank you to all of the contributors!
 
 For contributing the DiHiggs and TriHiggs updates and Version 2.3
-Javier Duarte - [@jmduarte] (https://www.github.com/jmduarte)
-Billy Li - [@billy000400] (https://www.github.com/billy000400)
+- Javier Duarte - [@jmduarte] (https://www.github.com/jmduarte)
+- Billy Li - [@billy000400] (https://www.github.com/billy000400)
 
 
 ## Citation
