@@ -6,6 +6,15 @@ import numpy as np
 
 from spanet.dataset.event_info import EventInfo
 
+def longest_common_substring(strings):
+    if not strings: return ""
+    shortest = min(strings, key=len)
+    for length in range(len(shortest), 0, -1):
+        for start in range(len(shortest) - length + 1):
+            candidate = shortest[start : start + length]
+            if all(candidate in s for s in strings):
+                return candidate
+    return ""
 
 class SymmetricEvaluator:
     def __init__(self, event_info: EventInfo):
@@ -21,9 +30,7 @@ class SymmetricEvaluator:
             orbit = tuple(sorted(orbit))
             names = [event_info.event_particles[i] for i in orbit]
 
-            cluster_name = map(dict.fromkeys, names)
-            cluster_name = map(lambda x: x.keys(), cluster_name)
-            cluster_name = ''.join(reduce(lambda x, y: x & y, cluster_name))
+            cluster_name = longest_common_substring(names)
             clusters.append((cluster_name, names, orbit))
 
             cluster_group = self.target_groups[names[0]]
