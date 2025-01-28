@@ -85,7 +85,7 @@ class JetReconstructionBase(pl.LightningModule):
         validation_range = 1.0
 
         # If we dont have a validation file provided, create one from the training file.
-        if len(validation_file) == 0:
+        if not validation_file:
             validation_file = training_file
 
             # Compute the training / validation ranges based on the data-split and the limiting percentage.
@@ -115,7 +115,7 @@ class JetReconstructionBase(pl.LightningModule):
         # Optionally construct the testing dataset.
         # This is not used in the main training script but is still useful for testing later.
         testing_dataset = None
-        if len(self.options.testing_file) > 0:
+        if self.options.testing_file:
             testing_dataset = self.dataset(
                 data_file=self.options.testing_file,
                 event_info=self.options.event_info_file,

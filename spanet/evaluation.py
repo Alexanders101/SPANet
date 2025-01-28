@@ -42,7 +42,8 @@ def load_model(
     batch_size: Optional[int] = None,
     cuda: bool = False,
     fp16: bool = False,
-    checkpoint: Optional[str] = None
+    checkpoint: Optional[str] = None,
+    overrides: Optional[dict] = None
 ) -> JetReconstructionModel:
     # Load the best-performing checkpoint on validation data
     if checkpoint is None:
@@ -66,6 +67,10 @@ def load_model(
 
     if batch_size is not None:
         options.batch_size = batch_size
+
+    if overrides is not None:
+        for key, value in overrides.items():
+            setattr(options, key, value)
 
     # Create model and disable all training operations for speed
     model = JetReconstructionModel(options)
