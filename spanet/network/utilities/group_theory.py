@@ -76,3 +76,22 @@ def complete_symbolic_symmetry_group(degree: int, permutations: MappedPermutatio
 def complete_symmetry_group(degree: int, permutations: MappedPermutations) -> PermutationGroup:
     permutations = complete_indices(degree, permutations)
     return symmetry_group(permutations)
+
+
+def create_group_string(group: SymbolicPermutationGroup, mapping: List[str]) -> str:
+    generators = [p.cyclic_form for p in group.generators]
+    generators = complete_indices(group.degree, generators)
+
+    group_string = []
+    for generator in generators:
+        generator_string = []
+
+        for cycle in generator:
+            generator_string.append("(" + ",".join(mapping[i] for i in cycle) + ")")
+        
+        generator_string = "".join(generator_string)
+        group_string.append(generator_string)
+
+    group_string = "".join(group_string)
+
+    return group_string

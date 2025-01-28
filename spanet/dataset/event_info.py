@@ -16,7 +16,8 @@ from spanet.network.utilities.group_theory import (
     power_set,
     complete_symbolic_symmetry_group,
     complete_symmetry_group,
-    expand_permutations
+    expand_permutations,
+    create_group_string
 )
 
 
@@ -79,6 +80,45 @@ class EventInfo:
 
         self.regressions = regressions
         self.classifications = classifications
+
+    def __str__(self):
+        info = []
+
+        info.append("Event Info")
+        info.append("=" * 80)
+
+        info.append("\nInputs")
+        info.append("-" * 80)
+        for source, features in self.input_features.items():
+            info.append(f"{source}")
+
+            for feature in features[:-1]:
+                info.append(f"├───{feature.name}")
+            
+            info.append(f"╰───{features[-1].name}")
+
+        info.append("\nAssignments")
+        info.append("-" * 80)
+
+        for particle, daughters in self.product_particles.items():
+            info.append(f"{particle}")
+
+            for daughter in daughters[:-1]:
+                info.append(f"├───{daughter}")
+
+            info.append(f"╰───{daughters[-1]}")
+
+        info.append("\nSymmetry Groups")
+        info.append("-" * 80)
+
+        info.append(f"Event: {create_group_string(self.event_symbolic_group, self.event_particles)}")
+        for particle, group in self.product_symbolic_groups.items():
+            info.append(f"{particle}: {create_group_string(group, self.product_particles[particle])}")
+
+        return "\n".join(info)
+
+    def __repr__(self):
+        return str(self)
 
     def normalized_features(self, input_name: str) -> NDArray[bool]:
         return np.array([feature.normalize for feature in self.input_features[input_name]])
