@@ -17,6 +17,13 @@ from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconst
 TArray = np.ndarray
 
 
+def default_assignment_fn(outputs: Outputs):
+    return extract_predictions([
+        np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)
+        for assignment in outputs.assignments
+    ])
+
+
 class JetReconstructionNetwork(JetReconstructionBase):
     def __init__(self, options: Options, torch_script: bool = False):
         """ Base class defining the SPANet architecture.
@@ -118,15 +125,12 @@ class JetReconstructionNetwork(JetReconstructionBase):
             classifications
         )
 
-    def predict(self, sources: Tuple[Source, ...]) -> Predictions:
+    def predict(self, sources: Tuple[Source, ...], assignment_fn=default_assignment_fn) -> Predictions:
         with torch.no_grad():
             outputs = self.forward(sources)
 
             # Extract assignment probabilities and find the least conflicting assignment.
-            assignments = extract_predictions([
-                np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)
-                for assignment in outputs.assignments
-            ])
+            assignments = assignment_fn(outputs)
 
             # Convert detection logits into probabilities and move to CPU.
             detections = np.stack([

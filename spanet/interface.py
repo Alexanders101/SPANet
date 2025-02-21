@@ -11,6 +11,7 @@ from spanet.options import Options
 from spanet.dataset.evaluator import EventInfo
 from spanet.evaluation import load_model
 from spanet.dataset.types import SpecialKey, Source, Predictions
+from spanet.network.jet_reconstruction.jet_reconstruction_network import default_assignment_fn
 
 
 class SPANetInterface:
@@ -64,6 +65,23 @@ class SPANetInterface:
                     group.create_dataset(daughter, data=np.zeros((batch_size,), dtype=np.int64) + target_id)
                     target_id += 1
 
+            regressions_group = f.create_group(SpecialKey.Regressions)
+            for event_regression in self.event_info.regressions[SpecialKey.Event]:
+                group = regressions_group.create_group(SpecialKey.Event)
+                group.create_dataset(event_regression.name, data=np.ones((batch_size,), dtype=np.float32))
+
+            for particle, particle_regressions in self.event_info.regressions.items():
+                if particle == SpecialKey.Event:
+                    continue
+
+                particle_regressions_group = regressions_group.create_group(particle)
+
+                for daughter, daughter_regressions in particle_regressions.items():
+                    group = particle_regressions_group.create_group(daughter)
+
+                    for daughter_regression in daughter_regressions:
+                        group.create_dataset(daughter_regression.name, data=np.ones((batch_size,), dtype=np.float32))
+
         return file
 
     def sources_from_features(self, features) -> List[Source]:
@@ -112,9 +130,9 @@ class SPANetInterface:
         self.network = self.network.to(device)
         return self
 
-    def __call__(self, features: Dict[str, Dict[str, ArrayLike]]) -> Predictions:
+    def __call__(self, features: Dict[str, Dict[str, ArrayLike]], assignment_fn=default_assignment_fn) -> Predictions:
         sources = self.sources_from_features(features)
-        predictions = self.network.predict(sources)
+        predictions = self.network.predict(sources, assignment_fn=assignment_fn)
         return self.add_names_to_predictions(predictions)
 
     def __repr__(self):
@@ -128,7 +146,7 @@ class SPANetInterface:
         info.append(repr(self.network))
 
         return "\n".join(info)
-    
+
     def __str__(self):
         info = []
 
